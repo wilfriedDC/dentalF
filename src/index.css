@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F1F3F5;
+  --color-border: #E5E7EB;
+  --color-border-soft: #F0F0F0;
+  --color-text: #1F2937;
+  --color-text-muted: #6B7280;
+  --color-text-subtle: #9CA3AF;
+  --color-primary: #0EA5A5;
+  --color-primary-light: #E0F5F5;
+  --color-primary-dark: #0C8F8F;
+  --color-green: #10B981;
+  --color-green-light: #D1FAE5;
+  --color-amber: #F59E0B;
+  --color-amber-light: #FEF3C7;
+  --color-red: #EF4444;
+  --color-red-light: #FEE2E2;
+  --color-sidebar: #FFFFFF;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #F8F9FA;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #1F2937;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide scrollbars until hover */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+*:hover::-webkit-scrollbar-thumb { background: #D1D5DB; }
+
+/* Smooth transitions */
+button, a, [role="button"] { transition: all 0.15s ease; }

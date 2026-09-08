@@ -1,12 +1,15 @@
 // ─── Shared Types ───────────────────────────────────────────────────────────
 
 export type NavSection = "dashboard" | "patients" | "appointments" | "billing" | "payments" | "settings";
-export type PatientTab = "overview" | "consultations" | "treatments" | "payments" | "appointments";
+export type PatientTab = "overview" | "consultations" | "treatments" | "payments" | "appointments" | "odontogramme";;
 export type BillingStatus = "Paid" | "Partial" | "Unpaid";
 export type PaymentMethod = "Cash" | "Card" | "Insurance" | "Transfer";
+export type AppointmentStatus = "Confirmed" | "Pending" | "Completed" | "Cancelled";
+export type ConsultationStatus = "Completed" | "Pending" | "Cancelled";
+
 
 export interface Patient {
-  id: string;
+  id: number;
   name: string;
   phone: string;
   email: string;
@@ -18,7 +21,7 @@ export interface Patient {
 }
 
 export interface Consultation {
-  id: string;
+  id: number;
   patientId: string;
   date: string;
   motif: string;
@@ -30,7 +33,7 @@ export interface Consultation {
 }
 
 export interface Appointment {
-  id: string;
+  id: number;
   patientId: string;
   patientName: string;
   time: string;
@@ -40,7 +43,7 @@ export interface Appointment {
 }
 
 export interface PaymentTransaction {
-  id: string;
+  id: number;
   date: string;
   patient: string;
   amount: number;

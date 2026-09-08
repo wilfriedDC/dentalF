@@ -86,18 +86,18 @@ export function NewPatientForm({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div>
             <label style={labelStyle}>Prénom *</label>
-            <input style={inputStyle} value={prenom} onChange={e => setPrenom(e.target.value)} placeholder="Sophie" />
+            <input style={inputStyle} value={prenom} onChange={e => setPrenom(e.target.value)} placeholder="Prenom" />
           </div>
           <div>
             <label style={labelStyle}>Nom *</label>
-            <input style={inputStyle} value={nom} onChange={e => setNom(e.target.value)} placeholder="Martin" />
+            <input style={inputStyle} value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom" />
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div>
             <label style={labelStyle}>Téléphone *</label>
-            <input style={inputStyle} value={telephone} onChange={e => setTelephone(e.target.value)} placeholder="06 12 34 56 78" />
+            <input style={inputStyle} value={telephone} onChange={e => setTelephone(e.target.value)} placeholder=" Numero" />
           </div>
           <div>
             <label style={labelStyle}>Email</label>
@@ -106,7 +106,7 @@ export function NewPatientForm({
               style={{ ...inputStyle, ...(!emailValid ? { borderColor: "#EF4444" } : {}) }}
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="patient@email.fr"
+              placeholder="patient@email.com"
             />
             {!emailValid && <div style={{ fontSize: 11.5, color: "#EF4444", marginTop: 5 }}>Format d'email invalide</div>}
           </div>
@@ -133,7 +133,7 @@ export function NewPatientForm({
 
         <div>
           <label style={labelStyle}>Adresse</label>
-          <input style={inputStyle} value={adresse} onChange={e => setAdresse(e.target.value)} placeholder="14 rue des Lilas, 75011 Paris" />
+          <input style={inputStyle} value={adresse} onChange={e => setAdresse(e.target.value)} placeholder=" adresse" />
         </div>
 
         {error && <div style={{ fontSize: 12.5, color: "#EF4444" }}>{error}</div>}

@@ -6,6 +6,7 @@ import { NewConsultationForm } from "../../components/NewConsultationForm";
 import { NewPatientForm } from "./NewPatientForm";
 import { formatDate } from "../../utils/formatDate";
 import { PatientRecord } from "./PatientRecord";
+import { NewAppointmentForm } from "../../components/NewAppointmentForm";
 
 import {
   getPatients,
@@ -14,16 +15,39 @@ import {
   type ApiPatient,
 } from "../../api/patients.api";
 
+// Convertit un ApiPatient (retour brut du backend) en Patient (type utilisé dans l'UI)
+function toPatient(patient: ApiPatient): Patient {
+  const lastConsultation = patient.consultations?.[0];
+
+  return {
+    id: patient.id,
+    name: `${patient.nom} ${patient.prenom}`,
+    phone: patient.telephone,
+    lastVisit: lastConsultation?.dateConsultation ?? patient.createdAt,
+    balance: 0,
+  };
+}
+
 export function PatientsSection({
   showNewPatient = false,
   onCloseNewPatient,
+  openPatientId = null,
+  onPatientOpened,
 }: {
   showNewPatient?: boolean;
   onCloseNewPatient?: () => void;
+  // ID du patient à sélectionner automatiquement (ex: venant du bouton "Ouvrir"
+  // de AppointmentsSection, via l'état du parent commun).
+  openPatientId?: number | null;
+  // Appelé une fois l'ouverture automatique effectuée, pour que le parent
+  // puisse remettre son état "openPatientId" à null (évite de re-déclencher
+  // l'ouverture à chaque re-render).
+  onPatientOpened?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Patient | null>(null);
   const [showConsult, setShowConsult] = useState(false);
+  const [showAppointment, setShowAppointment] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,24 +55,7 @@ export function PatientsSection({
     const loadPatients = async () => {
       try {
         const data = await getPatients();
-
-        const formattedPatients: Patient[] = data.map((patient: ApiPatient) => {
-          const lastConsultation = patient.consultations?.[0];
-
-          return {
-            id: patient.id,
-
-            name: `${patient.nom} ${patient.prenom}`,
-
-            phone: patient.telephone,
-
-            lastVisit: lastConsultation?.dateConsultation ?? patient.createdAt,
-
-            balance: 0,
-          };
-        });
-
-        setPatients(formattedPatients);
+        setPatients(data.map(toPatient));
       } catch (error) {
         console.error("Erreur chargement patients :", error);
       } finally {
@@ -58,6 +65,43 @@ export function PatientsSection({
 
     loadPatients();
   }, []);
+
+  // Ouverture automatique d'un patient par ID (ex: depuis l'agenda / rendez-vous).
+  useEffect(() => {
+    if (openPatientId == null) return;
+
+    // Cas 1 : le patient est déjà dans la liste chargée -> sélection immédiate.
+    const found = patients.find((p) => p.id === openPatientId);
+    if (found) {
+      setSelected(found);
+      onPatientOpened?.();
+      return;
+    }
+
+    // Cas 2 : liste pas encore chargée, ou patient absent de la liste en mémoire
+    // -> on va le chercher directement.
+    if (loading) return; // attend la fin du chargement de la liste avant de conclure à une absence
+
+    let cancelled = false;
+
+    const fetchSingle = async () => {
+      try {
+        const apiPatient = await getPatient(openPatientId);
+        if (cancelled) return;
+        setSelected(toPatient(apiPatient));
+      } catch (error) {
+        console.error("Erreur chargement du patient à ouvrir :", error);
+      } finally {
+        if (!cancelled) onPatientOpened?.();
+      }
+    };
+
+    fetchSingle();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [openPatientId, patients, loading, onPatientOpened]);
 
   const filtered = useMemo(
     () =>
@@ -75,20 +119,21 @@ export function PatientsSection({
         onBack={() => onCloseNewPatient?.()}
         onSave={async (payload) => {
           const created = await createPatient(payload);
-
-          const patient: Patient = {
-            id: created.id,
-            name: `${created.nom} ${created.prenom}`,
-            phone: created.telephone,
-            lastVisit: created.createdAt,
-            balance: 0,
-          };
+          const patient = toPatient(created);
 
           setPatients((prev) => [patient, ...prev]);
           setSelected(patient);
 
           onCloseNewPatient?.();
         }}
+      />
+    );
+  }
+  if (showAppointment && selected) {
+    return (
+      <NewAppointmentForm
+        patient={selected}
+        onBack={() => setShowAppointment(false)}
       />
     );
   }
@@ -240,6 +285,7 @@ export function PatientsSection({
             patient={selected}
             onBack={() => setSelected(null)}
             onNewConsult={() => setShowConsult(true)}
+            onNewAppointment={() => setShowAppointment(true)}
           />
         ) : (
           <div

@@ -5,22 +5,25 @@ import { Avatar } from "../../components/Avatar";
 import { StatusBadge } from "../../components/StatusBadge";
 import { ApptStatusBadge } from "../../components/ApptStatusBadge";
 import { formatDate } from "../../utils/formatDate";
+import { Odontogram } from "../../components/Odontogram";
 
 import {
   getPatient,
+  updateToothNote,
   type ApiPatient,
   type ApiConsultation,
+  type ApiToothNote,
 } from "../../api/patients.api";
 
 
 // =====================================================
 // PROPS
 // =====================================================
-
 interface PatientRecordProps {
   patient: Patient;
   onBack: () => void;
   onNewConsult: () => void;
+  onNewAppointment: () => void;
 }
 
 
@@ -41,6 +44,7 @@ export function PatientRecord({
   patient,
   onBack,
   onNewConsult,
+  onNewAppointment,
 }: PatientRecordProps) {
 
   const [tab, setTab] = useState<PatientTab>("overview");
@@ -50,6 +54,10 @@ export function PatientRecord({
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState("");
+
+  // Remarques par dent (odontogramme) — état séparé pour pouvoir les mettre
+  // à jour localement sans recharger tout le patient à chaque sauvegarde.
+  const [toothNotes, setToothNotes] = useState<ApiToothNote[]>([]);
 
 
   // ===================================================
@@ -68,6 +76,7 @@ export function PatientRecord({
         const result = await getPatient(patient.id);
 
         setData(result);
+        setToothNotes(result.odontogramme ?? []);
 
       } catch (err) {
 
@@ -87,6 +96,26 @@ export function PatientRecord({
     loadPatient();
 
   }, [patient.id]);
+
+
+  // ===================================================
+  // SAUVEGARDER UNE REMARQUE DE DENT
+  // ===================================================
+
+  const handleSaveToothNote = async (numeroDent: number, note: string) => {
+    const saved = await updateToothNote(patient.id, numeroDent, note);
+
+    setToothNotes((prev) => {
+      const withoutThisTooth = prev.filter(
+        (n) => n.numeroDent !== numeroDent
+      );
+
+      // Si la remarque est vide, on la retire simplement de la liste.
+      if (!saved.note) return withoutThisTooth;
+
+      return [...withoutThisTooth, saved];
+    });
+  };
 
 
   // ===================================================
@@ -249,6 +278,11 @@ export function PatientRecord({
     {
       id: "appointments",
       label: "Rendez-vous",
+    },
+
+    {
+      id: "odontogramme",
+      label: "Odontogramme",
     },
 
   ];
@@ -1272,6 +1306,18 @@ export function PatientRecord({
 
           </div>
 
+        )}
+
+
+        {/* =================================================
+            ODONTOGRAMME
+        ================================================= */}
+
+        {tab === "odontogramme" && (
+          <Odontogram
+            notes={toothNotes}
+            onSaveNote={handleSaveToothNote}
+          />
         )}
 
       </div>

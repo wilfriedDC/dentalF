@@ -106,3 +106,33 @@ export const createPatient = async (
     throw error;
   }
 };
+
+
+//odontograme
+export interface ApiToothNote {
+  numeroDent: number; // notation FDI (11-18, 21-28, 31-38, 41-48)
+  note: string;
+  updatedAt?: string;
+}
+
+// Ajoute ce champ à ton interface ApiPatient existante :
+export interface ApiPatient {
+  // ...tous les champs existants...
+  odontogramme?: ApiToothNote[];
+}
+
+/**
+ * Crée ou met à jour la remarque d'une dent pour un patient.
+ * ⚠️ Adapte l'URL si ta route backend est différente.
+ */
+export const updateToothNote = async (
+  patientId: number,
+  numeroDent: number,
+  note: string
+) => {
+  const response = await api.put(
+    `/patients/${patientId}/odontogramme/${numeroDent}`,
+    { note }
+  );
+  return response.data as ApiToothNote;
+};

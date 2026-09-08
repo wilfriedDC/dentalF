@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
+
 import type { NavSection } from "../types";
 import { Avatar } from "./Avatar";
+import { getPraticiens, type Praticien } from "../api/settings.api";
 
 const NAV_ITEMS: { id: NavSection; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
@@ -10,6 +13,26 @@ const NAV_ITEMS: { id: NavSection; label: string; icon: React.ReactNode }[] = [
 ];
 
 export function Sidebar({ active, onNav }: { active: NavSection; onNav: (s: NavSection) => void }) {
+  const [praticien, setPraticien] = useState<Praticien | null>(null);
+
+  useEffect(() => {
+    const loadPraticien = async () => {
+      try {
+        const praticiens = await getPraticiens();
+
+        // Pas de notion de "praticien connecté" dans le modèle actuel :
+        // on affiche le premier praticien du cabinet.
+        setPraticien(praticiens[0] ?? null);
+      } catch (err) {
+        console.error("Erreur chargement praticien :", err);
+      }
+    };
+
+    loadPraticien();
+  }, []);
+
+  const praticienName = praticien ? `Dr. ${praticien.nomComplet}` : "...";
+
   return (
     <div style={{ width: 220, flexShrink: 0, background: "#fff", borderRight: "1px solid #E5E7EB", display: "flex", flexDirection: "column", height: "100vh", position: "fixed", left: 0, top: 0, zIndex: 10 }}>
       {/* Logo */}
@@ -57,10 +80,10 @@ export function Sidebar({ active, onNav }: { active: NavSection; onNav: (s: NavS
           Paramètres
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginTop: 4 }}>
-          <Avatar name="Dr. Amina Karim" size={30} bg="#0EA5A5" color="#fff" />
+          <Avatar name={praticienName} size={30} bg="#0EA5A5" color="#fff" />
           <div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#1F2937" }}>Dr. Tsihory</div>
-            <div style={{ fontSize: 11, color: "#9CA3AF" }}>Dentiste</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#1F2937" }}>{praticienName}</div>
+            <div style={{ fontSize: 11, color: "#9CA3AF" }}>{praticien?.specialite ?? "Dentiste"}</div>
           </div>
         </div>
       </div>

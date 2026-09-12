@@ -9,6 +9,20 @@ import { getPraticiens, type Praticien } from "../api/settings.api";
 import { StatCard } from "../components/StatCard";
 import { Avatar } from "../components/Avatar";
 import { ApptStatusBadge } from "../components/ApptStatusBadge";
+import {
+  Users,
+  AlertCircle,
+  Wallet,
+  CalendarCheck,
+  CalendarX2,
+  ArrowRight,
+  Clock,
+  Sparkles,
+  ReceiptText,
+  BadgeCheck,
+  Stethoscope,
+  CreditCard,
+} from "lucide-react";
 
 interface DashboardProps {
   onNav: (section: NavSection) => void;
@@ -25,7 +39,6 @@ interface DashboardAppointment {
 
 interface ActivityItem {
   id: string;
-  initials: string;
   text: string;
   time: string;
   type: "payment" | "consultation";
@@ -40,10 +53,6 @@ export function Dashboard({ onNav }: DashboardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ==========================================
-  // CHARGEMENT DES DONNÉES
-  // ==========================================
-
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
@@ -56,11 +65,6 @@ export function Dashboard({ onNav }: DashboardProps) {
           getRendezVous(),
           getPraticiens(),
         ]);
-
-      console.log("Dashboard patients :", patientsData);
-      console.log("Dashboard consultations :", consultationsData);
-      console.log("Dashboard rendez-vous :", appointmentsData);
-      console.log("Dashboard praticiens :", praticiensData);
 
       setPatients(patientsData);
       setConsultations(consultationsData);
@@ -78,39 +82,18 @@ export function Dashboard({ onNav }: DashboardProps) {
     loadDashboard();
   }, [loadDashboard]);
 
-  // ==========================================
-  // NOM DU PRATICIEN AFFICHÉ
-  // ==========================================
-
   const doctorGreeting = useMemo(() => {
     if (!praticien) return "Docteur";
-
-    return praticien.specialite
-      ? `Dr. ${praticien.nomComplet}`
-      : praticien.nomComplet;
+    return praticien.specialite ? `Dr. ${praticien.nomComplet}` : praticien.nomComplet;
   }, [praticien]);
-
-  // ==========================================
-  // DATE DU JOUR
-  // ==========================================
 
   const today = useMemo(() => {
     const date = new Date();
-
-    return {
-      year: date.getFullYear(),
-      month: date.getMonth(),
-      day: date.getDate(),
-    };
+    return { year: date.getFullYear(), month: date.getMonth(), day: date.getDate() };
   }, []);
-
-  // ==========================================
-  // FORMAT DATE POUR L'AFFICHAGE
-  // ==========================================
 
   const todayLabel = useMemo(() => {
     const date = new Date();
-
     return date.toLocaleDateString("fr-FR", {
       weekday: "long",
       day: "2-digit",
@@ -119,15 +102,30 @@ export function Dashboard({ onNav }: DashboardProps) {
     });
   }, []);
 
-  // ==========================================
-  // RENDEZ-VOUS DU JOUR
-  // ==========================================
+  // Semaine en cours (7 jours), pour la mini-frise sous l'en-tête — repère visuel uniquement
+  const weekStrip = useMemo(() => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    const dayOffset = (now.getDay() + 6) % 7; // lundi = 0
+    startOfWeek.setDate(now.getDate() - dayOffset);
+
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(startOfWeek);
+      date.setDate(startOfWeek.getDate() + i);
+      return {
+        key: date.toISOString(),
+        dayLabel: date.toLocaleDateString("fr-FR", { weekday: "short" }).slice(0, 1).toUpperCase(),
+        dayNumber: date.getDate(),
+        isToday:
+          date.getFullYear() === today.year && date.getMonth() === today.month && date.getDate() === today.day,
+      };
+    });
+  }, [today]);
 
   const todayAppointments = useMemo<DashboardAppointment[]>(() => {
     return appointments
       .filter((appointment) => {
         const appointmentDate = new Date(appointment.date);
-
         return (
           appointmentDate.getFullYear() === today.year &&
           appointmentDate.getMonth() === today.month &&
@@ -147,49 +145,40 @@ export function Dashboard({ onNav }: DashboardProps) {
       .sort((a, b) => a.time.localeCompare(b.time));
   }, [appointments, today]);
 
-  // ==========================================
-  // NOMBRE DE RDV CONFIRMÉS
-  // ==========================================
-
   const confirmedAppointments = useMemo(() => {
     return todayAppointments.filter(
-      (appointment) =>
-        appointment.status === "CONFIRME" ||
-        appointment.status === "CONFIRMED"
+      (appointment) => appointment.status === "CONFIRME" || appointment.status === "CONFIRMED"
     ).length;
   }, [todayAppointments]);
 
-  // ==========================================
-  // TOTAL RESTANT À PAYER
-  // ==========================================
+  const pendingAppointments = todayAppointments.length - confirmedAppointments;
 
   const totalUnpaid = useMemo(() => {
     return consultations.reduce((total, consultation) => {
-      const totalActes = consultation.actes.reduce(
-        (sum, acte) => sum + Number(acte.prix || 0),
-        0
-      );
-
-      const totalPaye = consultation.paiements.reduce(
-        (sum, paiement) => sum + Number(paiement.montant || 0),
-        0
-      );
-
+      const totalActes = consultation.actes.reduce((sum, acte) => sum + Number(acte.prix || 0), 0);
+      const totalPaye = consultation.paiements.reduce((sum, paiement) => sum + Number(paiement.montant || 0), 0);
       return total + Math.max(totalActes - totalPaye, 0);
     }, 0);
   }, [consultations]);
 
-  // ==========================================
-  // RECETTES DU JOUR
-  // ==========================================
+  // Taux de recouvrement réel (total encaissé / total facturé), pour la barre de progression
+  const collectionRate = useMemo(() => {
+    let totalActesAll = 0;
+    let totalPayeAll = 0;
+
+    consultations.forEach((consultation) => {
+      totalActesAll += consultation.actes.reduce((sum, acte) => sum + Number(acte.prix || 0), 0);
+      totalPayeAll += consultation.paiements.reduce((sum, paiement) => sum + Number(paiement.montant || 0), 0);
+    });
+
+    return totalActesAll > 0 ? Math.round((totalPayeAll / totalActesAll) * 100) : 0;
+  }, [consultations]);
 
   const todayRevenue = useMemo(() => {
     let total = 0;
-
     consultations.forEach((consultation) => {
       consultation.paiements.forEach((paiement) => {
         const paymentDate = new Date(paiement.datePaiement);
-
         if (
           paymentDate.getFullYear() === today.year &&
           paymentDate.getMonth() === today.month &&
@@ -199,21 +188,14 @@ export function Dashboard({ onNav }: DashboardProps) {
         }
       });
     });
-
     return total;
   }, [consultations, today]);
 
-  // ==========================================
-  // NOMBRE DE PAIEMENTS DU JOUR
-  // ==========================================
-
   const todayPaymentsCount = useMemo(() => {
     let count = 0;
-
     consultations.forEach((consultation) => {
       consultation.paiements.forEach((paiement) => {
         const paymentDate = new Date(paiement.datePaiement);
-
         if (
           paymentDate.getFullYear() === today.year &&
           paymentDate.getMonth() === today.month &&
@@ -223,42 +205,21 @@ export function Dashboard({ onNav }: DashboardProps) {
         }
       });
     });
-
     return count;
   }, [consultations, today]);
 
-  // ==========================================
-  // ACTIVITÉ RÉCENTE
-  // ==========================================
-
   const activities = useMemo<ActivityItem[]>(() => {
-    const items: {
-      id: string;
-      date: Date;
-      initials: string;
-      text: string;
-      type: "payment" | "consultation";
-    }[] = [];
+    const items: { id: string; date: Date; text: string; type: "payment" | "consultation" }[] = [];
 
     consultations.forEach((consultation) => {
       const patient = consultation.patient;
-
-      const patientName = patient
-        ? `${patient.nom} ${patient.prenom}`
-        : "Patient inconnu";
-
-      const initials = patient
-        ? `${patient.prenom?.charAt(0) || ""}${patient.nom?.charAt(0) || ""}`.toUpperCase()
-        : "?";
+      const patientName = patient ? `${patient.nom} ${patient.prenom}` : "Patient inconnu";
 
       consultation.paiements.forEach((paiement) => {
         items.push({
           id: `payment-${paiement.id}`,
           date: new Date(paiement.datePaiement),
-          initials,
-          text: `${patientName} — Paiement ${Number(
-            paiement.montant || 0
-          ).toLocaleString("fr-FR")} Ar reçu`,
+          text: `${patientName} — Paiement ${Number(paiement.montant || 0).toLocaleString("fr-FR")} Ar reçu`,
           type: "payment",
         });
       });
@@ -266,19 +227,11 @@ export function Dashboard({ onNav }: DashboardProps) {
 
     consultations.forEach((consultation) => {
       const patient = consultation.patient;
-
-      const patientName = patient
-        ? `${patient.nom} ${patient.prenom}`
-        : "Patient inconnu";
-
-      const initials = patient
-        ? `${patient.prenom?.charAt(0) || ""}${patient.nom?.charAt(0) || ""}`.toUpperCase()
-        : "?";
+      const patientName = patient ? `${patient.nom} ${patient.prenom}` : "Patient inconnu";
 
       items.push({
         id: `consultation-${consultation.id}`,
         date: new Date(consultation.dateConsultation),
-        initials,
         text: `${patientName} — Consultation ajoutée`,
         type: "consultation",
       });
@@ -286,10 +239,9 @@ export function Dashboard({ onNav }: DashboardProps) {
 
     return items
       .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, 5)
+      .slice(0, 12)
       .map((item) => ({
         id: item.id,
-        initials: item.initials,
         text: item.text,
         type: item.type,
         time: formatRelativeTime(item.date),
@@ -297,101 +249,21 @@ export function Dashboard({ onNav }: DashboardProps) {
   }, [consultations]);
 
   // ==========================================
-  // STYLES PARTAGÉS (hover / responsive)
-  // ==========================================
-
-  const sharedStyles = (
-    <style>{`
-      @keyframes dash-shimmer {
-        0% { background-position: -400px 0; }
-        100% { background-position: 400px 0; }
-      }
-      .dash-skeleton {
-        background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 37%, #F3F4F6 63%);
-        background-size: 800px 100%;
-        animation: dash-shimmer 1.4s ease infinite;
-        border-radius: 8px;
-      }
-      .dash-stat-card {
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-        border-radius: 12px;
-      }
-      .dash-stat-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(0,0,0,0.07);
-      }
-      .dash-row {
-        transition: background-color 0.15s ease;
-        cursor: default;
-      }
-      .dash-row:hover {
-        background-color: #FAFAFA;
-      }
-      .dash-retry-btn {
-        margin-top: 12px;
-        padding: 7px 16px;
-        border-radius: 8px;
-        border: 1px solid #FECACA;
-        background: #fff;
-        color: #DC2626;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background-color 0.15s ease;
-      }
-      .dash-retry-btn:hover {
-        background-color: #FEF2F2;
-      }
-      .dash-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 14px;
-      }
-      .dash-content-grid {
-        display: grid;
-        grid-template-columns: 1fr 320px;
-        gap: 18px;
-      }
-      @media (max-width: 900px) {
-        .dash-stats-grid { grid-template-columns: repeat(2, 1fr); }
-        .dash-content-grid { grid-template-columns: 1fr; }
-      }
-      @media (max-width: 520px) {
-        .dash-stats-grid { grid-template-columns: 1fr; }
-      }
-    `}</style>
-  );
-
-  // ==========================================
   // LOADING
   // ==========================================
 
   if (loading) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-        {sharedStyles}
-
-        <div className="dash-skeleton" style={{ width: 220, height: 22 }} />
-
-        <div className="dash-stats-grid">
+      <div className="flex flex-col gap-6">
+        <div className="h-[110px] animate-pulse rounded-2xl bg-surface-2" />
+        <div className="grid grid-cols-4 gap-4 max-[900px]:grid-cols-2 max-[520px]:grid-cols-1">
           {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="dash-skeleton"
-              style={{ height: 88, borderRadius: 12 }}
-            />
+            <div key={i} className="h-[140px] animate-pulse rounded-2xl bg-surface-2" />
           ))}
         </div>
-
-        <div className="dash-content-grid">
-          <div
-            className="dash-skeleton"
-            style={{ height: 320, borderRadius: 12 }}
-          />
-          <div
-            className="dash-skeleton"
-            style={{ height: 320, borderRadius: 12 }}
-          />
+        <div className="grid grid-cols-[1fr_320px] gap-4.5 max-[900px]:grid-cols-1">
+          <div className="h-[320px] animate-pulse rounded-2xl bg-surface-2" />
+          <div className="h-[320px] animate-pulse rounded-2xl bg-surface-2" />
         </div>
       </div>
     );
@@ -403,19 +275,13 @@ export function Dashboard({ onNav }: DashboardProps) {
 
   if (error) {
     return (
-      <div
-        style={{
-          background: "#FEF2F2",
-          border: "1px solid #FECACA",
-          borderRadius: 12,
-          padding: 20,
-          color: "#DC2626",
-          fontSize: 14,
-        }}
-      >
+      <div className="rounded-xl border border-red-light bg-red-light/40 p-5 text-sm text-red">
         {error}
         <div>
-          <button className="dash-retry-btn" onClick={loadDashboard}>
+          <button
+            onClick={loadDashboard}
+            className="mt-3 rounded-lg border border-red-light bg-white px-4 py-1.5 text-[13px] font-medium text-red transition-colors hover:bg-red-light"
+          >
             Réessayer
           </button>
         </div>
@@ -424,274 +290,200 @@ export function Dashboard({ onNav }: DashboardProps) {
   }
 
   // ==========================================
-  // DASHBOARD
+  // DASHBOARD — hauteur fixe, scroll interne aux panneaux seulement
   // ==========================================
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {sharedStyles}
+    <div className="flex h-[calc(100vh-108px)] flex-col gap-5">
+      {/* HEADER — bannière colorée + frise de la semaine */}
+      <div className="relative shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-primary-dark px-7 py-6 shadow-[0_10px_30px_-8px_rgba(14,165,165,0.5)]">
+        <Sparkles size={130} strokeWidth={1} className="pointer-events-none absolute -right-6 -top-8 text-white/10" />
+        <div className="relative flex items-center justify-between gap-6 max-[820px]:flex-col max-[820px]:items-stretch">
+          <div>
+            <div className="text-[22px] font-extrabold text-white">Bonjour, {doctorGreeting} 👋</div>
+            <div className="mt-1.5 text-[13.5px] capitalize text-white/80">{todayLabel}</div>
+          </div>
 
-      {/* HEADER */}
+          <div className="flex items-center gap-5">
+            {/* Frise des jours de la semaine */}
+            <div className="flex items-center gap-1.5">
+              {weekStrip.map((day) => (
+                <div
+                  key={day.key}
+                  className={`flex h-11 w-9 flex-col items-center justify-center gap-0.5 rounded-lg text-[11px] transition-colors ${
+                    day.isToday ? "bg-white text-primary-dark shadow-sm" : "text-white/70"
+                  }`}
+                >
+                  <span className="font-medium">{day.dayLabel}</span>
+                  <span className={day.isToday ? "text-[13px] font-bold" : "text-[13px] font-semibold"}>
+                    {day.dayNumber}
+                  </span>
+                </div>
+              ))}
+            </div>
 
-      <div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#1F2937" }}>
-          Bonjour, {doctorGreeting}
-        </div>
-
-        <div
-          style={{
-            fontSize: 13.5,
-            color: "#6B7280",
-            marginTop: 3,
-            textTransform: "capitalize",
-          }}
-        >
-          {todayLabel} — {todayAppointments.length} rendez-vous aujourd'hui
+            <div className="flex items-center gap-2 whitespace-nowrap rounded-full bg-white/15 px-4 py-2.5 text-white backdrop-blur-sm">
+              <Clock size={16} strokeWidth={2} />
+              <span className="text-[13px] font-semibold">{todayAppointments.length} RDV aujourd'hui</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* STATS */}
+      <div className="grid shrink-0 grid-cols-4 gap-4 max-[900px]:grid-cols-2 max-[520px]:grid-cols-1">
+        {/* Carte vedette — la métrique la plus actionnable du jour */}
+        <StatCard
+          featured
+          label="RDV aujourd'hui"
+          value={todayAppointments.length}
+          unit="rendez-vous"
+          icon={<CalendarCheck size={18} strokeWidth={2.2} />}
+          progress={{
+            percent: todayAppointments.length > 0
+              ? Math.round((confirmedAppointments / todayAppointments.length) * 100)
+              : 0,
+            label: `${confirmedAppointments} confirmé${confirmedAppointments > 1 ? "s" : ""} sur ${todayAppointments.length}`,
+          }}
+        />
 
-      <div className="dash-stats-grid">
-        <div className="dash-stat-card">
-          <StatCard
-            label="Total patients"
-            value={patients.length}
-            sub="Patients enregistrés"
-            color="#0EA5A5"
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              </svg>
-            }
-          />
-        </div>
+        <StatCard
+          label="Total patients"
+          value={patients.length}
+          unit="patients"
+          caption="Patients enregistrés"
+          color="#0EA5A5"
+          icon={<Users size={18} strokeWidth={2.2} />}
+        />
 
-        <div className="dash-stat-card">
-          <StatCard
-            label="Factures impayées"
-            value={`${totalUnpaid.toLocaleString("fr-FR")} Ar`}
-            sub="Reste à payer"
-            color="#EF4444"
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-            }
-          />
-        </div>
+        <StatCard
+          label="Facturation"
+          value={`${totalUnpaid.toLocaleString("fr-FR")} Ar`}
+          unit="impayés"
+          color="#EF4444"
+          icon={<ReceiptText size={18} strokeWidth={2.2} />}
+          progress={{
+            percent: collectionRate,
+            label: `${collectionRate}% du montant facturé encaissé`,
+          }}
+        />
 
-        <div className="dash-stat-card">
-          <StatCard
-            label="Recettes du jour"
-            value={`${todayRevenue.toLocaleString("fr-FR")} Ar`}
-            sub={`${todayPaymentsCount} paiement${todayPaymentsCount > 1 ? "s" : ""} reçu${todayPaymentsCount > 1 ? "s" : ""}`}
-            color="#10B981"
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="1" x2="12" y2="23" />
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-              </svg>
-            }
-          />
-        </div>
-
-        <div className="dash-stat-card">
-          <StatCard
-            label="RDV aujourd'hui"
-            value={todayAppointments.length}
-            sub={`${confirmedAppointments} confirmé${confirmedAppointments > 1 ? "s" : ""}`}
-            color="#F59E0B"
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-              </svg>
-            }
-          />
-        </div>
+        <StatCard
+          label="Recettes du jour"
+          value={`${todayRevenue.toLocaleString("fr-FR")} Ar`}
+          caption={`${todayPaymentsCount} paiement${todayPaymentsCount > 1 ? "s" : ""} reçu${todayPaymentsCount > 1 ? "s" : ""}`}
+          color="#10B981"
+          icon={<Wallet size={18} strokeWidth={2.2} />}
+        />
       </div>
 
-      {/* CONTENT */}
-
-      <div className="dash-content-grid">
+      {/* CONTENT — occupe le reste de l'écran, scroll interne à chaque panneau */}
+      <div className="grid min-h-0 flex-1 grid-cols-[1fr_320px] gap-4.5 max-[900px]:grid-cols-1">
         {/* RENDEZ-VOUS DU JOUR */}
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+          <div className="flex shrink-0 items-center justify-between border-b border-border-soft bg-surface/60 px-6 py-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light text-primary">
+                <CalendarCheck size={16} strokeWidth={2.2} />
+              </div>
+              <div className="text-[15px] font-bold text-text">Rendez-vous du jour</div>
 
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #E5E7EB",
-            borderRadius: 12,
-            overflow: "hidden",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-          }}
-        >
-          <div
-            style={{
-              padding: "18px 22px 14px",
-              borderBottom: "1px solid #F3F4F6",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ fontSize: 15, fontWeight: 600, color: "#1F2937" }}>
-              Rendez-vous du jour
+              {todayAppointments.length > 0 && (
+                <div className="ml-1 flex items-center gap-1.5">
+                  <span className="rounded-full bg-primary-light px-2 py-0.5 text-[10.5px] font-bold text-primary-dark">
+                    {confirmedAppointments} confirmés
+                  </span>
+                  {pendingAppointments > 0 && (
+                    <span className="rounded-full bg-amber-light px-2 py-0.5 text-[10.5px] font-bold text-amber">
+                      {pendingAppointments} en attente
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-
             <button
               onClick={() => onNav("appointments")}
-              style={{
-                fontSize: 12.5,
-                color: "#0EA5A5",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
+              className="flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[12.5px] font-semibold text-primary transition-colors hover:bg-primary-light"
             >
-              Voir tout →
+              Voir tout <ArrowRight size={13} strokeWidth={2.5} />
             </button>
           </div>
 
-          <div>
+          {/* Scroll interne — jamais la page entière */}
+          <div className="flex-1 overflow-y-auto p-3">
             {todayAppointments.length === 0 ? (
               <EmptyState text="Aucun rendez-vous aujourd'hui." />
             ) : (
-              todayAppointments.map((appt, index) => (
-                <div
-                  key={appt.id}
-                  className="dash-row"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    padding: "13px 22px",
-                    borderBottom:
-                      index < todayAppointments.length - 1
-                        ? "1px solid #F9FAFB"
-                        : "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontFamily: "'DM Mono', monospace",
-                      fontSize: 13,
-                      color: "#6B7280",
-                      width: 44,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {appt.time}
-                  </div>
-
-                  <div
-                    style={{
-                      width: 3,
-                      height: 36,
-                      borderRadius: 2,
-                      background:
-                        appt.status === "CONFIRME" || appt.status === "CONFIRMED"
-                          ? "#0EA5A5"
-                          : "#F59E0B",
-                      flexShrink: 0,
-                    }}
-                  />
-
-                  <Avatar name={appt.patientName} size={32} />
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1F2937" }}>
-                      {appt.patientName}
-                    </div>
-
+              <div className="flex flex-col gap-2.5">
+                {todayAppointments.map((appt) => {
+                  const isConfirmed = appt.status === "CONFIRME" || appt.status === "CONFIRMED";
+                  return (
                     <div
-                      style={{
-                        fontSize: 12,
-                        color: "#9CA3AF",
-                        marginTop: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
+                      key={appt.id}
+                      className="group flex items-center gap-3.5 rounded-xl border border-transparent bg-surface/60 p-3 pl-4 transition-all hover:translate-x-0.5 hover:border-border hover:bg-white hover:shadow-[0_4px_14px_rgba(0,0,0,0.06)]"
+                      style={{ borderLeftColor: isConfirmed ? "#0EA5A5" : "#F59E0B", borderLeftWidth: 3 }}
                     >
-                      {appt.reason}
+                      <div className="w-11 shrink-0 font-mono text-[13px] font-semibold text-text-muted">
+                        {appt.time}
+                      </div>
+
+                      <Avatar name={appt.patientName} size={34} />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13.5px] font-semibold text-text">{appt.patientName}</div>
+                        <div className="mt-0.5 truncate text-xs text-text-subtle">{appt.reason}</div>
+                      </div>
+
+                      <div className="hidden text-[11.5px] text-text-subtle sm:block">{appt.duration} min</div>
+
+                      <ApptStatusBadge status={appt.status} />
                     </div>
-                  </div>
-
-                  <div style={{ fontSize: 11.5, color: "#9CA3AF" }}>
-                    {appt.duration} min
-                  </div>
-
-                  <ApptStatusBadge status={appt.status} />
-                </div>
-              ))
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
 
-        {/* ACTIVITÉ RÉCENTE */}
-
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #E5E7EB",
-            borderRadius: 12,
-            overflow: "hidden",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-          }}
-        >
-          <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid #F3F4F6" }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "#1F2937" }}>
-              Activité récente
+        {/* ACTIVITÉ RÉCENTE — timeline */}
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+          <div className="flex shrink-0 items-center gap-2 border-b border-border-soft bg-surface/60 px-5 py-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-light text-green">
+              <BadgeCheck size={16} strokeWidth={2.2} />
             </div>
+            <div className="text-[15px] font-bold text-text">Activité récente</div>
           </div>
 
-          <div style={{ padding: "8px 0" }}>
+          {/* Scroll interne — jamais la page entière */}
+          <div className="flex-1 overflow-y-auto p-4">
             {activities.length === 0 ? (
               <EmptyState text="Aucune activité récente." small />
             ) : (
-              activities.map((item) => (
-                <div
-                  key={item.id}
-                  className="dash-row"
-                  style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "10px 20px" }}
-                >
-                  <div
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: "50%",
-                      background: item.type === "payment" ? "#D1FAE5" : "#E0F5F5",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: item.type === "payment" ? "#059669" : "#0EA5A5",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {item.initials}
-                  </div>
-
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12.5, color: "#374151", lineHeight: 1.4 }}>
-                      {item.text}
+              <div className="relative flex flex-col gap-4 pl-1">
+                <div className="absolute bottom-2 left-[18px] top-2 w-px bg-border" />
+                {activities.map((item) => (
+                  <div key={item.id} className="relative flex items-start gap-3">
+                    <div
+                      className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-4 ring-white"
+                      style={{
+                        background: item.type === "payment" ? "#D1FAE5" : "#E0F5F5",
+                        color: item.type === "payment" ? "#059669" : "#0EA5A5",
+                      }}
+                    >
+                      {item.type === "payment" ? (
+                        <CreditCard size={14} strokeWidth={2.2} />
+                      ) : (
+                        <Stethoscope size={14} strokeWidth={2.2} />
+                      )}
                     </div>
 
-                    <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                      {item.time}
+                    <div className="flex-1 pt-1">
+                      <div className="text-[12.5px] font-medium leading-relaxed text-text">{item.text}</div>
+                      <div className="mt-0.5 text-[11px] text-text-subtle">{item.time}</div>
                     </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -706,29 +498,9 @@ export function Dashboard({ onNav }: DashboardProps) {
 
 function EmptyState({ text, small }: { text: string; small?: boolean }) {
   return (
-    <div
-      style={{
-        padding: small ? 30 : 40,
-        textAlign: "center",
-        color: "#9CA3AF",
-      }}
-    >
-      <svg
-        width="28"
-        height="28"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ margin: "0 auto 8px" }}
-      >
-        <rect x="3" y="4" width="18" height="18" rx="2" />
-        <line x1="3" y1="10" x2="21" y2="10" />
-        <line x1="9" y1="16" x2="15" y2="16" />
-      </svg>
-      <div style={{ fontSize: small ? 13 : 13.5 }}>{text}</div>
+    <div className={`flex flex-col items-center justify-center text-center text-text-subtle ${small ? "py-7" : "py-10"}`}>
+      <CalendarX2 size={28} strokeWidth={1.5} className="mb-2" />
+      <div className={small ? "text-[13px]" : "text-[13.5px]"}>{text}</div>
     </div>
   );
 }

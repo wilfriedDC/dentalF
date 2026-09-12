@@ -7,6 +7,10 @@ import { NewPatientForm } from "./NewPatientForm";
 import { formatDate } from "../../utils/formatDate";
 import { PatientRecord } from "./PatientRecord";
 import { NewAppointmentForm } from "../../components/NewAppointmentForm";
+import { Search, Users2, UserRound, FileDown, FileSpreadsheet } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 import {
   getPatients,
@@ -113,6 +117,48 @@ export function PatientsSection({
     [search, patients],
   );
 
+  // =========================
+  // EXPORT PDF — liste des patients actuellement filtrée/affichée
+  // =========================
+  const exportPatientsToPDF = () => {
+    const doc = new jsPDF();
+
+    doc.setFontSize(14);
+    doc.text("Liste des patients - DentalF", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Exporté le ${new Date().toLocaleDateString("fr-FR")}`, 14, 21);
+    doc.text(`Total : ${filtered.length} patient${filtered.length !== 1 ? "s" : ""}`, 14, 26);
+
+    autoTable(doc, {
+      startY: 31,
+      head: [["Nom", "Téléphone", "Dernière visite"]],
+      body: filtered.map((p) => [p.name, p.phone, formatDate(p.lastVisit)]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [14, 165, 165] }, // couleur proche de --primary
+    });
+
+    doc.save(`patients_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
+  // =========================
+  // EXPORT EXCEL — liste des patients actuellement filtrée/affichée
+  // =========================
+  const exportPatientsToExcel = () => {
+    const rows = filtered.map((p) => ({
+      Nom: p.name,
+      Téléphone: p.phone,
+      "Dernière visite": formatDate(p.lastVisit),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Patients");
+
+    worksheet["!cols"] = [{ wch: 26 }, { wch: 18 }, { wch: 16 }];
+
+    XLSX.writeFile(workbook, `patients_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   if (showNewPatient) {
     return (
       <NewPatientForm
@@ -148,133 +194,81 @@ export function PatientsSection({
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "300px 1fr",
-        gap: 16,
-        height: "calc(100vh - 130px)",
-      }}
-    >
+    <div className="grid h-[calc(100vh-130px)] grid-cols-[300px_1fr] gap-4">
       {/* Left panel */}
-      <div
-        style={{
-          background: "#fff",
-          border: "1px solid #E5E7EB",
-          borderRadius: 12,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-        }}
-      >
-        <div style={{ padding: "14px 14px 10px" }}>
-          <div style={{ position: "relative" }}>
-            <svg
-              style={{
-                position: "absolute",
-                left: 10,
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#9CA3AF",
-              }}
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+      <div className="flex flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+        <div className="px-3.5 pb-2.5 pt-3.5">
+          <div className="relative">
+            <Search
+              size={14}
+              strokeWidth={2}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-subtle"
+            />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filtrer les patients…"
-              style={{
-                width: "100%",
-                padding: "8px 10px 8px 32px",
-                border: "1.5px solid #E5E7EB",
-                borderRadius: 8,
-                fontSize: 13,
-                fontFamily: "'Inter', sans-serif",
-                background: "#F8F9FA",
-                outline: "none",
-              }}
-              onFocus={(e) => (e.target.style.borderColor = "#0EA5A5")}
-              onBlur={(e) => (e.target.style.borderColor = "#E5E7EB")}
+              className="w-full rounded-lg border-[1.5px] border-border bg-surface py-2 pl-8 pr-2.5 text-[13px] text-text outline-none transition-colors focus:border-primary focus:bg-white"
             />
           </div>
-          <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 8 }}>
-            {filtered.length} patient{filtered.length !== 1 ? "s" : ""}
+
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11.5px] text-text-subtle">
+              <Users2 size={12} strokeWidth={2} />
+              {filtered.length} patient{filtered.length !== 1 ? "s" : ""}
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={exportPatientsToExcel}
+                disabled={filtered.length === 0}
+                title="Exporter en Excel"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <FileSpreadsheet size={13} strokeWidth={2.2} />
+              </button>
+              <button
+                onClick={exportPatientsToPDF}
+                disabled={filtered.length === 0}
+                title="Exporter en PDF"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <FileDown size={13} strokeWidth={2.2} />
+              </button>
+            </div>
           </div>
         </div>
-        <div style={{ flex: 1, overflowY: "auto" }}>
-          {filtered.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setSelected(p)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 11,
-                padding: "11px 14px",
-                width: "100%",
-                textAlign: "left",
-                border: "none",
-                cursor: "pointer",
-                background: selected?.id === p.id ? "#E0F5F5" : "transparent",
-                borderLeft:
-                  selected?.id === p.id
-                    ? "3px solid #0EA5A5"
-                    : "3px solid transparent",
-                fontFamily: "'Inter', sans-serif",
-                transition: "all 0.1s",
-              }}
-              onMouseEnter={(e) => {
-                if (selected?.id !== p.id)
-                  (e.currentTarget as HTMLElement).style.background = "#F9FAFB";
-              }}
-              onMouseLeave={(e) => {
-                if (selected?.id !== p.id)
-                  (e.currentTarget as HTMLElement).style.background =
-                    "transparent";
-              }}
-            >
-              <Avatar name={p.name} size={34} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 13.5,
-                    fontWeight: 500,
-                    color: "#1F2937",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {p.name}
+
+        <div className="flex-1 overflow-y-auto px-1.5 pb-1.5">
+          {filtered.map((p) => {
+            const isActive = selected?.id === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setSelected(p)}
+                className={`flex w-full items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-2.5 text-left transition-colors ${
+                  isActive
+                    ? "border-l-primary bg-primary-light"
+                    : "border-l-transparent hover:bg-surface"
+                }`}
+              >
+                <Avatar name={p.name} size={34} />
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`truncate text-[13.5px] ${
+                      isActive ? "font-semibold text-primary-dark" : "font-medium text-text"
+                    }`}
+                  >
+                    {p.name}
+                  </div>
+                  <div className="mt-0.5 text-[11.5px] text-text-subtle">
+                    Dernière visite: {formatDate(p.lastVisit)}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 1 }}>
-                  Dernière visite: {formatDate(p.lastVisit)}
-                </div>
-              </div>
-              {p.balance > 0 && (
-                <div
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: "50%",
-                    background: "#EF4444",
-                    flexShrink: 0,
-                  }}
-                />
-              )}
-            </button>
-          ))}
+                {p.balance > 0 && <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-red" />}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -288,34 +282,11 @@ export function PatientsSection({
             onNewAppointment={() => setShowAppointment(true)}
           />
         ) : (
-          <div
-            style={{
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "#fff",
-              borderRadius: 12,
-              border: "1px solid #E5E7EB",
-              color: "#9CA3AF",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            <svg
-              width="40"
-              height="40"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#D1D5DB"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-            </svg>
-            <div style={{ fontSize: 14 }}>Sélectionnez un patient</div>
+          <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-white text-text-subtle">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-2">
+              <UserRound size={30} strokeWidth={1.5} className="text-text-subtle" />
+            </div>
+            <div className="text-sm font-medium">Sélectionnez un patient</div>
           </div>
         )}
       </div>

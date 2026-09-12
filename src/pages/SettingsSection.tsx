@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
 import {
+  Building2,
+  Stethoscope,
+  MapPin,
+  Phone,
+  Mail,
+  BadgeCheck,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
+
+import {
   getCabinet,
   updateCabinet,
   getPraticiens,
@@ -7,42 +18,53 @@ import {
   type Cabinet,
   type Praticien,
 } from "../api/settings.api";
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  fontSize: 14,
-  border: "1px solid #D1D5DB",
-  borderRadius: 8,
-  outline: "none",
-  color: "#1F2937",
-  fontFamily: "inherit",
-  boxSizing: "border-box",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#374151",
-  marginBottom: 6,
-};
-
-const buttonStyle = (disabled: boolean): React.CSSProperties => ({
-  alignSelf: "flex-start",
-  padding: "9px 18px",
-  fontSize: 13.5,
-  fontWeight: 600,
-  border: "none",
-  borderRadius: 8,
-  color: "#fff",
-  cursor: disabled ? "default" : "pointer",
-  background: disabled ? "#9CA3AF" : "#0EA5A5",
-});
+import { Avatar } from "../components/Avatar";
 
 type Toast = { type: "success" | "error"; text: string } | null;
+type Tab = "cabinet" | "praticien";
+
+function Field({
+  label,
+  icon,
+  span,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  span?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={span ? "col-span-2" : ""}>
+      <label className="mb-1.5 flex items-center gap-1.5 text-[12.5px] font-medium text-gray-500">
+        {icon}
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const inputClass =
+  "w-full rounded-lg border-0 bg-gray-50 px-3.5 py-2.5 text-[13.5px] text-gray-800 outline-none ring-1 ring-inset ring-gray-200 transition-all placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-primary";
+
+function ToastMessage({ toast }: { toast: Toast }) {
+  if (!toast) return null;
+  const isSuccess = toast.type === "success";
+  return (
+    <span
+      className={`flex items-center gap-1.5 text-[12.5px] font-medium ${
+        isSuccess ? "text-emerald-600" : "text-red-500"
+      }`}
+    >
+      {isSuccess ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+      {toast.text}
+    </span>
+  );
+}
 
 export function SettingsSection() {
+  const [tab, setTab] = useState<Tab>("cabinet");
   const [cabinet, setCabinet] = useState<Cabinet | null>(null);
   const [praticien, setPraticien] = useState<Praticien | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,10 +107,10 @@ export function SettingsSection() {
         email: cabinet.email,
       });
       setCabinet(updated);
-      showToast(setCabinetMessage, { type: "success", text: "Informations du cabinet enregistrées." });
+      showToast(setCabinetMessage, { type: "success", text: "Cabinet mis à jour" });
     } catch (error) {
       console.error(error);
-      showToast(setCabinetMessage, { type: "error", text: "Erreur lors de l'enregistrement." });
+      showToast(setCabinetMessage, { type: "error", text: "Échec de l'enregistrement" });
     } finally {
       setSavingCabinet(false);
     }
@@ -104,10 +126,10 @@ export function SettingsSection() {
         specialite: praticien.specialite,
       });
       setPraticien(updated);
-      showToast(setPraticienMessage, { type: "success", text: "Profil du praticien enregistré." });
+      showToast(setPraticienMessage, { type: "success", text: "Profil mis à jour" });
     } catch (error) {
       console.error(error);
-      showToast(setPraticienMessage, { type: "error", text: "Erreur lors de l'enregistrement." });
+      showToast(setPraticienMessage, { type: "error", text: "Échec de l'enregistrement" });
     } finally {
       setSavingPraticien(false);
     }
@@ -115,129 +137,162 @@ export function SettingsSection() {
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF", fontSize: 13.5 }}>
+      <div className="flex h-64 items-center justify-center text-[13.5px] text-gray-400">
         Chargement des paramètres...
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 600, fontFamily: "'Inter', sans-serif" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, color: "#1F2937" }}>Paramètres</div>
+    <div className="mx-auto flex h-full max-w-xl flex-col gap-5 p-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[20px] font-bold text-gray-800">Paramètres</h1>
+          <p className="mt-0.5 text-[13px] text-gray-500">Cabinet et profil praticien</p>
+        </div>
+
+        {/* Segmented switcher, same visual language as the sidebar's active nav state */}
+        <div className="flex items-center gap-1 rounded-xl bg-gray-100 p-1">
+          <button
+            onClick={() => setTab("cabinet")}
+            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] font-semibold transition-all ${
+              tab === "cabinet"
+                ? "bg-white text-primary-dark shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <Building2 size={15} strokeWidth={2.2} />
+            Cabinet
+          </button>
+          <button
+            onClick={() => setTab("praticien")}
+            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] font-semibold transition-all ${
+              tab === "praticien"
+                ? "bg-white text-primary-dark shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <Stethoscope size={15} strokeWidth={2.2} />
+            Praticien
+          </button>
+        </div>
+      </div>
 
       {/* ================= CABINET ================= */}
-      {cabinet && (
-        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ padding: "16px 20px", borderBottom: "1px solid #F3F4F6", fontSize: 14, fontWeight: 600, color: "#1F2937" }}>
-            Informations du cabinet
-          </div>
-
-          <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
-            <div>
-              <label style={labelStyle}>Nom du cabinet</label>
+      {tab === "cabinet" && cabinet && (
+        <div className="flex flex-1 flex-col justify-between rounded-2xl bg-white p-6 ring-1 ring-gray-100">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Nom du cabinet" span>
               <input
-                style={inputStyle}
+                className={inputClass}
                 value={cabinet.nom}
                 onChange={(e) => setCabinet({ ...cabinet, nom: e.target.value })}
               />
-            </div>
+            </Field>
 
-            <div>
-              <label style={labelStyle}>Adresse</label>
+            <Field label="Adresse" icon={<MapPin size={12} />} span>
               <input
-                style={inputStyle}
+                className={inputClass}
                 value={cabinet.adresse ?? ""}
                 onChange={(e) => setCabinet({ ...cabinet, adresse: e.target.value })}
               />
-            </div>
+            </Field>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <div>
-                <label style={labelStyle}>Téléphone</label>
-                <input
-                  style={inputStyle}
-                  value={cabinet.telephone ?? ""}
-                  onChange={(e) => setCabinet({ ...cabinet, telephone: e.target.value })}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>Email</label>
-                <input
-                  type="email"
-                  style={inputStyle}
-                  value={cabinet.email ?? ""}
-                  onChange={(e) => setCabinet({ ...cabinet, email: e.target.value })}
-                />
-              </div>
-            </div>
+            <Field label="Téléphone" icon={<Phone size={12} />}>
+              <input
+                className={inputClass}
+                value={cabinet.telephone ?? ""}
+                onChange={(e) => setCabinet({ ...cabinet, telephone: e.target.value })}
+              />
+            </Field>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <button onClick={handleSaveCabinet} disabled={savingCabinet} style={buttonStyle(savingCabinet)}>
-                {savingCabinet ? "Enregistrement..." : "Enregistrer"}
-              </button>
-              {cabinetMessage && (
-                <span style={{ fontSize: 12.5, color: cabinetMessage.type === "success" ? "#059669" : "#EF4444" }}>
-                  {cabinetMessage.text}
-                </span>
-              )}
-            </div>
+            <Field label="Email" icon={<Mail size={12} />}>
+              <input
+                type="email"
+                className={inputClass}
+                value={cabinet.email ?? ""}
+                onChange={(e) => setCabinet({ ...cabinet, email: e.target.value })}
+              />
+            </Field>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
+            <ToastMessage toast={cabinetMessage} />
+            <button
+              onClick={handleSaveCabinet}
+              disabled={savingCabinet}
+              className={`ml-auto rounded-xl px-5 py-2.5 text-[13.5px] font-semibold text-white transition-colors ${
+                savingCabinet ? "cursor-default bg-gray-300" : "bg-primary hover:bg-primary-dark"
+              }`}
+            >
+              {savingCabinet ? "Enregistrement..." : "Enregistrer"}
+            </button>
           </div>
         </div>
       )}
 
       {/* ================= PRATICIEN ================= */}
-      {praticien ? (
-        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ padding: "16px 20px", borderBottom: "1px solid #F3F4F6", fontSize: 14, fontWeight: 600, color: "#1F2937" }}>
-            Profil praticien
-          </div>
+      {tab === "praticien" &&
+        (praticien ? (
+          <div className="flex flex-1 flex-col justify-between rounded-2xl bg-white p-6 ring-1 ring-gray-100">
+            <div className="flex flex-col gap-5">
+              <div className="flex items-center gap-3">
+                <Avatar name={`Dr. ${praticien.nomComplet}`} size={40} bg="#0C8F8F" color="#ffffff" />
+                <div className="min-w-0">
+                  <div className="truncate text-[14px] font-semibold text-gray-800">
+                    Dr. {praticien.nomComplet}
+                  </div>
+                  <div className="truncate text-[12.5px] text-gray-500">
+                    {praticien.specialite || "Dentiste"}
+                  </div>
+                </div>
+              </div>
 
-          <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
-            <div>
-              <label style={labelStyle}>Nom complet</label>
-              <input
-                style={inputStyle}
-                value={praticien.nomComplet}
-                onChange={(e) => setPraticien({ ...praticien, nomComplet: e.target.value })}
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Nom complet" span>
+                  <input
+                    className={inputClass}
+                    value={praticien.nomComplet}
+                    onChange={(e) => setPraticien({ ...praticien, nomComplet: e.target.value })}
+                  />
+                </Field>
+
+                <Field label="Numéro RPPS" icon={<BadgeCheck size={12} />}>
+                  <input
+                    className={inputClass}
+                    value={praticien.numeroRPPS ?? ""}
+                    onChange={(e) => setPraticien({ ...praticien, numeroRPPS: e.target.value })}
+                  />
+                </Field>
+
+                <Field label="Spécialité">
+                  <input
+                    className={inputClass}
+                    value={praticien.specialite ?? ""}
+                    onChange={(e) => setPraticien({ ...praticien, specialite: e.target.value })}
+                  />
+                </Field>
+              </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <div>
-                <label style={labelStyle}>Numéro RPPS</label>
-                <input
-                  style={inputStyle}
-                  value={praticien.numeroRPPS ?? ""}
-                  onChange={(e) => setPraticien({ ...praticien, numeroRPPS: e.target.value })}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>Spécialité</label>
-                <input
-                  style={inputStyle}
-                  value={praticien.specialite ?? ""}
-                  onChange={(e) => setPraticien({ ...praticien, specialite: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <button onClick={handleSavePraticien} disabled={savingPraticien} style={buttonStyle(savingPraticien)}>
+            <div className="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
+              <ToastMessage toast={praticienMessage} />
+              <button
+                onClick={handleSavePraticien}
+                disabled={savingPraticien}
+                className={`ml-auto rounded-xl px-5 py-2.5 text-[13.5px] font-semibold text-white transition-colors ${
+                  savingPraticien ? "cursor-default bg-gray-300" : "bg-primary hover:bg-primary-dark"
+                }`}
+              >
                 {savingPraticien ? "Enregistrement..." : "Enregistrer"}
               </button>
-              {praticienMessage && (
-                <span style={{ fontSize: 12.5, color: praticienMessage.type === "success" ? "#059669" : "#EF4444" }}>
-                  {praticienMessage.text}
-                </span>
-              )}
             </div>
           </div>
-        </div>
-      ) : (
-        <div style={{ background: "#fff", border: "1px dashed #D1D5DB", borderRadius: 12, padding: "24px 20px", textAlign: "center", color: "#9CA3AF", fontSize: 13.5 }}>
-          Aucun profil praticien trouvé.
-        </div>
-      )}
+        ) : (
+          <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-gray-300 text-[13.5px] text-gray-400">
+            Aucun profil praticien trouvé.
+          </div>
+        ))}
     </div>
   );
 }

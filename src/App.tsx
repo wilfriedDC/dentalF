@@ -12,6 +12,15 @@ import { BillingSection } from "./pages/billing/BillingSection";
 import { PaymentsSection } from "./pages/PaymentsSection";
 import { SettingsSection } from "./pages/SettingsSection";
 
+// Formate une Date JS en "YYYY-MM-DD", format attendu par l'input type="date"
+// du formulaire NewAppointmentForm.
+function toDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function App() {
   const [nav, setNav] = useState<NavSection>("dashboard");
 
@@ -20,6 +29,21 @@ export default function App() {
   const [newPatientOpen, setNewPatientOpen] = useState(false);
 
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
+
+  // =========================
+  // PRÉ-REMPLISSAGE DATE/HEURE DU NOUVEAU RENDEZ-VOUS
+  // ---------------------------------------------------
+  // Alimenté par AppointmentsSection quand l'utilisateur clique sur
+  // "Nouveau rendez-vous" depuis un créneau libre du planning : la date
+  // et l'heure sont déjà connues, donc on les transmet directement au
+  // formulaire pour que l'utilisateur n'ait pas à les ressaisir.
+  // Reste à null quand le formulaire est ouvert depuis la TopBar (aucun
+  // créneau précis choisi à l'avance).
+  // =========================
+  const [newAppointmentPrefill, setNewAppointmentPrefill] = useState<{
+    date: string;
+    heure: string;
+  } | null>(null);
 
   // =========================
   // OUVRIR UN PATIENT DEPUIS UNE AUTRE SECTION
@@ -50,7 +74,7 @@ export default function App() {
   };
 
   // =========================
-  // NOUVEAU RENDEZ-VOUS
+  // NOUVEAU RENDEZ-VOUS (depuis la TopBar — aucun créneau pré-choisi)
   // ---------------------------------------------------
   // Bug corrigé : on bascule maintenant sur la section
   // "appointments" avant d'ouvrir le formulaire, comme le
@@ -59,7 +83,22 @@ export default function App() {
   // active (ex: le Dashboard).
   // =========================
   const handleNewAppointment = () => {
+    setNewAppointmentPrefill(null);
     setNav("appointments");
+    setNewAppointmentOpen(true);
+    setNewPatientOpen(false);
+  };
+
+  // =========================
+  // NOUVEAU RENDEZ-VOUS DEPUIS UN CRÉNEAU LIBRE DU PLANNING
+  // ---------------------------------------------------
+  // Appelé par AppointmentsSection (prop onCreateAppointment) quand
+  // l'utilisateur clique sur "Nouveau rendez-vous" sur un créneau libre.
+  // La date et l'heure du créneau sont déjà connues : on les stocke pour
+  // pré-remplir le formulaire.
+  // =========================
+  const handleCreateAppointmentFromSlot = (date: Date, hour: string) => {
+    setNewAppointmentPrefill({ date: toDateInputValue(date), heure: hour });
     setNewAppointmentOpen(true);
     setNewPatientOpen(false);
   };
@@ -69,6 +108,7 @@ export default function App() {
   // =========================
   const handleCloseNewAppointment = () => {
     setNewAppointmentOpen(false);
+    setNewAppointmentPrefill(null);
   };
 
   return (
@@ -143,7 +183,10 @@ export default function App() {
           */}
           {nav === "appointments" && (
             <>
-              <AppointmentsSection onOpenPatient={handleOpenPatient} />
+              <AppointmentsSection
+                onOpenPatient={handleOpenPatient}
+                onCreateAppointment={handleCreateAppointmentFromSlot}
+              />
 
               {newAppointmentOpen && (
                 <div
@@ -166,6 +209,8 @@ export default function App() {
                 >
                   <div style={{ width: "100%", maxWidth: 760 }}>
                     <NewAppointmentForm
+                      initialDate={newAppointmentPrefill?.date ?? ""}
+                      initialHour={newAppointmentPrefill?.heure ?? ""}
                       onBack={handleCloseNewAppointment}
                       onSaved={handleCloseNewAppointment}
                     />

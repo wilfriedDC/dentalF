@@ -1,18 +1,16 @@
 import { useEffect, useState } from "react";
+import { Plus, CalendarPlus } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { getPraticiens, type Praticien } from "../api/settings.api";
+
 interface TopBarProps {
   onNewPatient: () => void;
   onNewAppointment: () => void;
   searchValue: string;
   onSearch: (v: string) => void;
 }
-export function TopBar({
-  onNewPatient,
-  onNewAppointment,
-  searchValue,
-  onSearch,
-}: TopBarProps) {
+
+export function TopBar({ onNewPatient, onNewAppointment }: TopBarProps) {
   const [praticien, setPraticien] = useState<Praticien | null>(null);
 
   useEffect(() => {
@@ -35,43 +33,29 @@ export function TopBar({
     : undefined;
 
   return (
-    <div style={{ height: 60, background: "#fff", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center", padding: "0 28px", gap: 16, position: "fixed", left: 220, right: 0, top: 0, zIndex: 9 }}>
-      <div style={{ flex: 1 }} />
+    <div className="fixed left-[220px] right-0 top-0 z-[9] flex h-[60px] items-center gap-4 border-b border-border bg-surface px-7">
+      <div className="flex-1" />
 
       {/* Date */}
-      <div style={{ fontSize: 13, color: "#6B7280", fontFamily: "'DM Mono', monospace" }}>
+      <div className="font-mono text-[13px] text-text-muted">
         {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
       </div>
 
+      {/* Nouveau rendez-vous */}
       <button
-  onClick={onNewAppointment}
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "9px 14px",
-    borderRadius: 8,
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    color: "#374151",
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: "pointer",
-  }}
->
-  Nouveau rendez-vous
-</button>
-
-      
+        onClick={onNewAppointment}
+        className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2.5 text-[13px] font-medium text-text hover:bg-surface-2"
+      >
+        <CalendarPlus size={16} strokeWidth={2} />
+        Nouveau rendez-vous
+      </button>
 
       {/* Nouveau patient */}
       <button
         onClick={onNewPatient}
-        style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 16px", background: "#0EA5A5", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "'Inter', sans-serif" }}
-        onMouseEnter={e => (e.currentTarget.style.background = "#0C8F8F")}
-        onMouseLeave={e => (e.currentTarget.style.background = "#0EA5A5")}
+        className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[13.5px] font-semibold text-white transition-colors hover:bg-primary-dark"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <Plus size={14} strokeWidth={2.5} />
         Nouveau patient
       </button>
 

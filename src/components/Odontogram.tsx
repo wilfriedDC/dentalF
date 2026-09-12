@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { ApiToothNote } from "../../api/patients.api";
+import { useEffect, useState } from "react";
+import type { ApiToothNote } from "../api/patients.api";
 
 // =====================================================
 // DISPOSITION DES DENTS — Notation FDI (internationale)
@@ -39,8 +39,6 @@ function getToothKind(numeroDent: number): ToothKind {
 // =====================================================
 // STATUTS DE DENT
 // =====================================================
-// NOTE : `ApiToothNote` doit exposer un champ `statut?: ToothStatus`
-// (à défaut "sain"). À ajouter dans ../../api/patients.api.
 
 export type ToothStatus =
   | "sain"
@@ -285,20 +283,62 @@ function ToothShape({
   );
 }
 
+// =====================================================
+// PROPS DU COMPOSANT PRINCIPAL
+// =====================================================
+
+// Consultation minimale nécessaire pour le sélecteur (pas besoin de tous les
+// champs de ApiConsultation ici).
+export interface OdontogramConsultationOption {
+  id: number;
+  dateConsultation: string;
+  motifConsultation: string;
+}
+
 interface OdontogramProps {
   notes: ApiToothNote[];
+  // Liste des consultations du patient, utilisée pour choisir à laquelle
+  // rattacher la remarque/le statut d'une dent (l'odontogramme est un
+  // historique par consultation, pas un champ libre sur le patient).
+  consultations: OdontogramConsultationOption[];
   onSaveNote: (
     numeroDent: number,
     note: string,
-    statut: ToothStatus
+    statut: ToothStatus,
+    consultationId: number
   ) => Promise<void>;
 }
 
-export function Odontogram({ notes, onSaveNote }: OdontogramProps) {
+// Formatte une date ISO en "12/03/2026" pour le sélecteur de consultation
+function formatShortDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("fr-FR");
+}
+
+export function Odontogram({ notes, consultations, onSaveNote }: OdontogramProps) {
   const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [draftStatus, setDraftStatus] = useState<ToothStatus>("sain");
   const [saving, setSaving] = useState(false);
+
+  // Consultation ciblée par l'enregistrement en cours. Par défaut, la plus
+  // récente (on suppose `consultations` triée du plus récent au plus ancien,
+  // comme le fait déjà le reste de la fiche patient).
+  const [selectedConsultationId, setSelectedConsultationId] = useState<number | "">(
+    consultations[0]?.id ?? ""
+  );
+
+  // Si la liste des consultations change (ex: nouvelle consultation créée
+  // pendant que l'onglet est ouvert) et qu'aucune n'était encore choisie, on
+  // pré-sélectionne la plus récente.
+  useEffect(() => {
+    if (selectedConsultationId === "" && consultations[0]) {
+      setSelectedConsultationId(consultations[0].id);
+    }
+  }, [consultations, selectedConsultationId]);
+
+  const hasConsultations = consultations.length > 0;
 
   const getNote = (numeroDent: number) =>
     notes.find((n) => n.numeroDent === numeroDent)?.note ?? "";
@@ -315,9 +355,11 @@ export function Odontogram({ notes, onSaveNote }: OdontogramProps) {
 
   const handleSave = async () => {
     if (selectedTooth == null) return;
+    if (!selectedConsultationId) return; // bouton désactivé dans ce cas, sécurité supplémentaire
+
     setSaving(true);
     try {
-      await onSaveNote(selectedTooth, draft.trim(), draftStatus);
+      await onSaveNote(selectedTooth, draft.trim(), draftStatus, Number(selectedConsultationId));
     } catch (err) {
       console.error("Erreur enregistrement remarque dent :", err);
     } finally {
@@ -556,7 +598,24 @@ export function Odontogram({ notes, onSaveNote }: OdontogramProps) {
           padding: "16px 18px",
         }}
       >
-        {selectedTooth == null ? (
+        {!hasConsultations ? (
+          <div
+            style={{
+              color: "#92400E",
+              background: "#FFFBEB",
+              border: "1px solid #FDE68A",
+              borderRadius: 8,
+              fontSize: 13,
+              textAlign: "center",
+              padding: 16,
+              lineHeight: 1.5,
+            }}
+          >
+            Aucune consultation enregistrée pour ce patient. Créez d'abord une
+            consultation avant de renseigner l'odontogramme — chaque remarque
+            de dent est rattachée à une consultation.
+          </div>
+        ) : selectedTooth == null ? (
           <div
             style={{
               color: "#9CA3AF",
@@ -572,13 +631,51 @@ export function Odontogram({ notes, onSaveNote }: OdontogramProps) {
           <>
             <div
               style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#1F2937",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
                 marginBottom: 12,
+                flexWrap: "wrap",
               }}
             >
-              Dent {selectedTooth}
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#1F2937" }}>
+                Dent {selectedTooth}
+              </div>
+
+              {/* Sélecteur de consultation : détermine à quelle consultation
+                  cette remarque/ce statut sera rattaché. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <label
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    color: "#6B7280",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Consultation :
+                </label>
+                <select
+                  value={selectedConsultationId}
+                  onChange={(e) => setSelectedConsultationId(Number(e.target.value))}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #D1D5DB",
+                    fontSize: 12.5,
+                    color: "#374151",
+                    fontFamily: "'Inter', sans-serif",
+                    background: "#fff",
+                  }}
+                >
+                  {consultations.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {formatShortDate(c.dateConsultation)} — {c.motifConsultation || "Consultation"}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Sélecteur de statut */}
@@ -653,18 +750,18 @@ export function Odontogram({ notes, onSaveNote }: OdontogramProps) {
             >
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || !selectedConsultationId}
                 style={{
                   padding: "7px 16px",
                   background: "#0EA5A5",
                   color: "#fff",
                   border: "none",
                   borderRadius: 8,
-                  cursor: saving ? "wait" : "pointer",
+                  cursor: saving || !selectedConsultationId ? "not-allowed" : "pointer",
                   fontSize: 13,
                   fontWeight: 600,
                   fontFamily: "'Inter', sans-serif",
-                  opacity: saving ? 0.7 : 1,
+                  opacity: saving || !selectedConsultationId ? 0.7 : 1,
                 }}
               >
                 {saving ? "Enregistrement..." : "Enregistrer"}

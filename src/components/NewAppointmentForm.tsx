@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Patient } from "../types";
 
 import {
   getPatients,
+  createPatient,
   type ApiPatient,
 } from "../api/patients.api";
 
@@ -21,6 +22,9 @@ interface NewAppointmentFormProps {
   onSaved?: () => void;
 }
 
+// Mode de sélection du patient quand aucun patient n'est déjà imposé par le parent
+type PatientMode = "existing" | "new";
+
 // =====================================================
 // COMPONENT
 // =====================================================
@@ -37,6 +41,21 @@ export function NewAppointmentForm({
   const [selectedPatientId, setSelectedPatientId] = useState(
     patient ? String(patient.id) : ""
   );
+
+  // ===================================================
+  // RECHERCHE DE PATIENT (combobox)
+  // ===================================================
+  const [patientMode, setPatientMode] = useState<PatientMode>("existing");
+  const [patientQuery, setPatientQuery] = useState(patient ? patient.name : "");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsBlurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ===================================================
+  // PATIENT SANS DOSSIER (pas encore créé en base)
+  // ===================================================
+  const [newPatientNom, setNewPatientNom] = useState("");
+  const [newPatientPrenom, setNewPatientPrenom] = useState("");
+  const [newPatientTelephone, setNewPatientTelephone] = useState("");
 
   const [date, setDate] = useState(initialDate);
   const [heure, setHeure] = useState(initialHour);
@@ -58,6 +77,7 @@ export function NewAppointmentForm({
 
   useEffect(() => {
     setSelectedPatientId(patient ? String(patient.id) : "");
+    setPatientQuery(patient ? patient.name : "");
   }, [patient]);
 
   useEffect(() => {
@@ -102,16 +122,100 @@ export function NewAppointmentForm({
   }, []);
 
   // ===================================================
+  // RECHERCHE : filtrage des patients par nom/prénom/téléphone
+  // ===================================================
+
+  const normalizedQuery = patientQuery.trim().toLowerCase();
+
+  const filteredPatients =
+    normalizedQuery.length === 0
+      ? patients.slice(0, 8)
+      : patients
+          .filter((p) => {
+            const fullName = `${p.nom} ${p.prenom}`.toLowerCase();
+            return (
+              fullName.includes(normalizedQuery) ||
+              (p.telephone ?? "").includes(normalizedQuery)
+            );
+          })
+          .slice(0, 8);
+
+  const handleSelectPatient = (p: ApiPatient) => {
+    setSelectedPatientId(String(p.id));
+    setPatientQuery(`${p.nom} ${p.prenom}`);
+    setShowSuggestions(false);
+  };
+
+  const handlePatientQueryChange = (value: string) => {
+    setPatientQuery(value);
+    setShowSuggestions(true);
+    // Si l'utilisateur retouche le texte, on invalide la sélection précédente
+    // tant qu'il n'a pas re-choisi un patient dans la liste.
+    setSelectedPatientId("");
+  };
+
+  // Petit délai avant de fermer la liste au blur, pour laisser le temps au
+  // clic sur une suggestion de s'exécuter (onMouseDown déclenché avant onBlur).
+  const handlePatientInputBlur = () => {
+    suggestionsBlurTimeout.current = setTimeout(() => {
+      setShowSuggestions(false);
+    }, 120);
+  };
+
+  const handlePatientInputFocus = () => {
+    if (suggestionsBlurTimeout.current) {
+      clearTimeout(suggestionsBlurTimeout.current);
+    }
+    setShowSuggestions(true);
+  };
+
+  // ===================================================
+  // CHANGEMENT DE MODE (existant / sans dossier)
+  // ===================================================
+
+  const handleSwitchMode = (mode: PatientMode) => {
+    setPatientMode(mode);
+    setError("");
+    // On nettoie les champs de l'autre mode pour éviter d'envoyer des
+    // données incohérentes au moment de l'enregistrement.
+    if (mode === "existing") {
+      setNewPatientNom("");
+      setNewPatientPrenom("");
+      setNewPatientTelephone("");
+    } else {
+      setSelectedPatientId("");
+      setPatientQuery("");
+    }
+  };
+
+  // ===================================================
   // ENREGISTRER
   // ===================================================
 
   const handleSave = async () => {
     setError("");
 
-    // Patient obligatoire
-    if (!selectedPatientId) {
-      setError("Veuillez sélectionner un patient.");
-      return;
+    const usingExistingPatient = Boolean(patient) || patientMode === "existing";
+
+    // --- Validation patient ---
+    if (usingExistingPatient) {
+      if (!selectedPatientId) {
+        setError("Veuillez sélectionner un patient dans la liste.");
+        return;
+      }
+    } else {
+      if (newPatientNom.trim().length < 2) {
+        setError("Le nom doit contenir au moins 2 caractères.");
+        return;
+      }
+      if (newPatientPrenom.trim().length < 2) {
+        setError("Le prénom doit contenir au moins 2 caractères.");
+        return;
+      }
+      if (newPatientTelephone.trim().length < 8) {
+        setError("Veuillez indiquer un numéro de téléphone valide (8 chiffres minimum).");
+        return;
+      }
     }
 
     // Date obligatoire
@@ -129,8 +233,26 @@ export function NewAppointmentForm({
     try {
       setSaving(true);
 
+      let finalPatientId: number;
+
+      if (usingExistingPatient) {
+        finalPatientId = Number(selectedPatientId);
+      } else {
+        // Mode "Sans dossier" : on crée d'abord le patient (nom, prénom,
+        // téléphone obligatoires ; sexe, date de naissance et adresse restent
+        // vides/null, comme autorisé par le schéma backend), puis on récupère
+        // son ID pour créer le rendez-vous.
+        const createdPatient = await createPatient({
+          nom: newPatientNom.trim(),
+          prenom: newPatientPrenom.trim(),
+          telephone: newPatientTelephone.trim(),
+        });
+
+        finalPatientId = createdPatient.id;
+      }
+
       await createRendezVous({
-        patientId: Number(selectedPatientId),
+        patientId: finalPatientId,
         date,
         heure,
         motif: motif.trim() || undefined,
@@ -140,27 +262,25 @@ export function NewAppointmentForm({
       onSaved?.();
 
       onBack();
-    } catch (err) {
+    } catch (err: any) {
       console.error(
         "Erreur création rendez-vous :",
-        err
+        err?.response?.data ?? err
       );
 
+      // Remonte le message d'erreur du backend si disponible (ex: validation Zod),
+      // plutôt qu'un message générique qui masque la vraie cause.
+      const backendMessage = err?.response?.data?.message;
+
       setError(
-        "Impossible d'enregistrer le rendez-vous."
+        typeof backendMessage === "string"
+          ? backendMessage
+          : "Impossible d'enregistrer le rendez-vous."
       );
     } finally {
       setSaving(false);
     }
   };
-
-  // ===================================================
-  // PATIENT SÉLECTIONNÉ
-  // ===================================================
-
-  const selectedPatient = patients.find(
-    (p) => p.id === Number(selectedPatientId)
-  );
 
   // ===================================================
   // RENDER
@@ -251,20 +371,79 @@ export function NewAppointmentForm({
         ================================================= */}
 
         <div style={{ marginBottom: 22 }}>
-          <label
+          <div
             style={{
-              display: "block",
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: "#374151",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
               marginBottom: 7,
             }}
           >
-            Patient *
-          </label>
+            <label
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: "#374151",
+              }}
+            >
+              Patient *
+            </label>
+
+            {/* Le choix du mode n'a de sens que si aucun patient n'est déjà imposé
+                par le parent (ex: venant de la fiche patient). */}
+            {!patient && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  background: "#F3F4F6",
+                  borderRadius: 8,
+                  padding: 3,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSwitchMode("existing")}
+                  disabled={saving}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 6,
+                    border: "none",
+                    cursor: saving ? "not-allowed" : "pointer",
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    background: patientMode === "existing" ? "#fff" : "transparent",
+                    color: patientMode === "existing" ? "#0EA5A5" : "#6B7280",
+                    boxShadow:
+                      patientMode === "existing" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  Patient existant
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchMode("new")}
+                  disabled={saving}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 6,
+                    border: "none",
+                    cursor: saving ? "not-allowed" : "pointer",
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    background: patientMode === "new" ? "#fff" : "transparent",
+                    color: patientMode === "new" ? "#0EA5A5" : "#6B7280",
+                    boxShadow: patientMode === "new" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  Sans dossier
+                </button>
+              </div>
+            )}
+          </div>
 
           {patient ? (
-            // Patient déjà sélectionné
+            // Patient déjà imposé par le parent (ex: depuis la fiche patient)
             <div
               style={{
                 background: "#F8F9FA",
@@ -294,15 +473,184 @@ export function NewAppointmentForm({
                 </div>
               )}
             </div>
-          ) : (
-            // Aucun patient sélectionné
-            <>
-              <select
-                value={selectedPatientId}
-                onChange={(e) =>
-                  setSelectedPatientId(e.target.value)
-                }
+          ) : patientMode === "existing" ? (
+            // --- Recherche de patient existant (combobox) ---
+            <div style={{ position: "relative" }}>
+              <input
+                type="text"
+                value={patientQuery}
+                onChange={(e) => handlePatientQueryChange(e.target.value)}
+                onFocus={handlePatientInputFocus}
+                onBlur={handlePatientInputBlur}
                 disabled={loadingPatients || saving}
+                placeholder={
+                  loadingPatients ? "Chargement des patients..." : "Rechercher un patient (nom ou téléphone)…"
+                }
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "10px 12px",
+                  border: `1px solid ${selectedPatientId ? "#0EA5A5" : "#D1D5DB"}`,
+                  borderRadius: 8,
+                  outline: "none",
+                  fontSize: 13,
+                  fontFamily: "'Inter', sans-serif",
+                  background: "#fff",
+                  color: "#374151",
+                }}
+              />
+
+              {selectedPatientId && (
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 11.5,
+                    color: "#0EA5A5",
+                    fontWeight: 600,
+                  }}
+                >
+                  ✓ Patient sélectionné
+                </div>
+              )}
+
+              {showSuggestions && !loadingPatients && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 4px)",
+                    left: 0,
+                    right: 0,
+                    background: "#fff",
+                    border: "1px solid #E5E7EB",
+                    borderRadius: 8,
+                    boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+                    maxHeight: 220,
+                    overflowY: "auto",
+                    zIndex: 30,
+                  }}
+                >
+                  {filteredPatients.length === 0 ? (
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        fontSize: 12.5,
+                        color: "#9CA3AF",
+                      }}
+                    >
+                      Aucun patient trouvé.{" "}
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleSwitchMode("new")}
+                        style={{
+                          border: "none",
+                          background: "none",
+                          color: "#0EA5A5",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          padding: 0,
+                          fontSize: 12.5,
+                        }}
+                      >
+                        Créer sans dossier →
+                      </button>
+                    </div>
+                  ) : (
+                    filteredPatients.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        // onMouseDown (avant le blur de l'input) pour garantir que le clic
+                        // soit bien pris en compte avant la fermeture de la liste.
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleSelectPatient(p)}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "10px 14px",
+                          border: "none",
+                          borderBottom: "1px solid #F3F4F6",
+                          background:
+                            String(p.id) === selectedPatientId ? "#F0FDFA" : "#fff",
+                          cursor: "pointer",
+                          display: "block",
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#1F2937" }}>
+                          {p.nom} {p.prenom}
+                        </div>
+                        {p.telephone && (
+                          <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 2 }}>
+                            {p.telephone}
+                          </div>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            // --- Patient sans dossier : saisie directe des coordonnées ---
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                background: "#FFFBEB",
+                border: "1px solid #FDE68A",
+                borderRadius: 10,
+                padding: 14,
+              }}
+            >
+              <div style={{ fontSize: 11.5, color: "#92400E", lineHeight: 1.5 }}>
+                Ce patient ne sera pas créé dans votre base "Patients". Ses coordonnées
+                seront simplement enregistrées avec ce rendez-vous.
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <input
+                  type="text"
+                  value={newPatientNom}
+                  onChange={(e) => setNewPatientNom(e.target.value)}
+                  placeholder="Nom *"
+                  disabled={saving}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    border: "1px solid #D1D5DB",
+                    borderRadius: 8,
+                    outline: "none",
+                    fontSize: 13,
+                    fontFamily: "'Inter', sans-serif",
+                  }}
+                />
+                <input
+                  type="text"
+                  value={newPatientPrenom}
+                  onChange={(e) => setNewPatientPrenom(e.target.value)}
+                  placeholder="Prénom *"
+                  disabled={saving}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    border: "1px solid #D1D5DB",
+                    borderRadius: 8,
+                    outline: "none",
+                    fontSize: 13,
+                    fontFamily: "'Inter', sans-serif",
+                  }}
+                />
+              </div>
+
+              <input
+                type="tel"
+                value={newPatientTelephone}
+                onChange={(e) => setNewPatientTelephone(e.target.value)}
+                placeholder="Téléphone *"
+                disabled={saving}
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
@@ -312,43 +660,9 @@ export function NewAppointmentForm({
                   outline: "none",
                   fontSize: 13,
                   fontFamily: "'Inter', sans-serif",
-                  background: "#fff",
-                  color: "#374151",
                 }}
-              >
-                <option value="">
-                  {loadingPatients
-                    ? "Chargement des patients..."
-                    : "Sélectionner un patient"}
-                </option>
-
-                {patients.map((p) => (
-                  <option
-                    key={p.id}
-                    value={p.id}
-                  >
-                    {p.nom} {p.prenom}
-                    {p.telephone
-                      ? ` — ${p.telephone}`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-
-              {/* Aperçu du patient sélectionné */}
-              {selectedPatient && (
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontSize: 12,
-                    color: "#6B7280",
-                  }}
-                >
-                  Téléphone :{" "}
-                  {selectedPatient.telephone || "Non renseigné"}
-                </div>
-              )}
-            </>
+              />
+            </div>
           )}
         </div>
 

@@ -17,20 +17,15 @@ const PALETTE = [
 
 function getInitials(name?: string): string {
   if (!name) return "?";
-
   const parts = name.trim().split(/\s+/).filter(Boolean);
-
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function getPalette(name?: string) {
   if (!name) return PALETTE[0];
-
   const hash = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-
   return PALETTE[hash % PALETTE.length];
 }
 
@@ -44,22 +39,14 @@ export function Avatar({ name, size = 36, bg, color }: AvatarProps) {
   return (
     <div
       title={name}
+      className="flex shrink-0 select-none items-center justify-center rounded-full font-sans font-semibold shadow-[0_0_0_1px_rgba(0,0,0,0.04)]"
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
         background,
         color: textColor,
-        fontFamily: "'Inter', sans-serif",
-        fontWeight: 600,
         fontSize: size * 0.36,
         letterSpacing: 0.2,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        boxShadow: "0 0 0 1px rgba(0,0,0,0.04)",
-        userSelect: "none",
       }}
     >
       {initials}

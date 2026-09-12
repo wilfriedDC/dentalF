@@ -3,6 +3,12 @@ import type { CreatePatientPayload } from "../../api/patients.api";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Longueurs minimales alignées sur createPatientSchema (backend, Zod) :
+// nom >= 2, prenom >= 2, telephone >= 8.
+const NOM_MIN_LENGTH = 2;
+const PRENOM_MIN_LENGTH = 2;
+const TELEPHONE_MIN_LENGTH = 8;
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "10px 12px",
@@ -23,6 +29,12 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 6,
 };
 
+const fieldErrorStyle: React.CSSProperties = {
+  fontSize: 11.5,
+  color: "#EF4444",
+  marginTop: 5,
+};
+
 export function NewPatientForm({
   onBack,
   onSave,
@@ -41,27 +53,49 @@ export function NewPatientForm({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
+  // Un champ n'affiche son erreur qu'une fois que l'utilisateur y a touché,
+  // pour ne pas afficher tous les messages dès l'ouverture du formulaire.
+  const [touched, setTouched] = useState<{ nom?: boolean; prenom?: boolean; telephone?: boolean }>({});
+
   const emailValid = email === "" || EMAIL_RE.test(email);
-  const canSave = nom.trim() && prenom.trim() && telephone.trim() && emailValid;
+  const nomValid = nom.trim().length >= NOM_MIN_LENGTH;
+  const prenomValid = prenom.trim().length >= PRENOM_MIN_LENGTH;
+  const telephoneValid = telephone.trim().length >= TELEPHONE_MIN_LENGTH;
+
+  const canSave = nomValid && prenomValid && telephoneValid && emailValid;
 
   async function handleSave() {
+    // Marque tous les champs requis comme "touchés" pour révéler les erreurs
+    // éventuelles au moment de la tentative d'enregistrement.
+    setTouched({ nom: true, prenom: true, telephone: true });
+
     if (!canSave || saving) return;
+
     setSaving(true);
     setError("");
     try {
       await onSave({
         nom: nom.trim(),
         prenom: prenom.trim(),
-        sexe: sexe || null,
+        sexe: sexe || undefined,
         telephone: telephone.trim(),
-        email: email.trim() || null,
-        dateNaissance: dateNaissance || null,
-        adresse: adresse.trim() || null,
+        email: email.trim() || undefined,
+        dateNaissance: dateNaissance || undefined,
+        adresse: adresse.trim() || undefined,
       });
       setSaved(true);
-    } catch (err) {
-      console.error(err);
-      setError("Erreur lors de la création du patient. Veuillez réessayer.");
+    } catch (err: any) {
+      console.error(err?.response?.data ?? err);
+
+      // Remonte le message d'erreur renvoyé par le backend (ex: validation Zod)
+      // plutôt qu'un message générique qui masque la vraie cause du 400.
+      const backendMessage = err?.response?.data?.message;
+
+      setError(
+        typeof backendMessage === "string"
+          ? backendMessage
+          : "Erreur lors de la création du patient. Veuillez réessayer."
+      );
     } finally {
       setSaving(false);
     }
@@ -86,18 +120,45 @@ export function NewPatientForm({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div>
             <label style={labelStyle}>Prénom *</label>
-            <input style={inputStyle} value={prenom} onChange={e => setPrenom(e.target.value)} placeholder="Prenom" />
+            <input
+              style={{ ...inputStyle, ...(touched.prenom && !prenomValid ? { borderColor: "#EF4444" } : {}) }}
+              value={prenom}
+              onChange={e => setPrenom(e.target.value)}
+              onBlur={() => setTouched(t => ({ ...t, prenom: true }))}
+              placeholder="Prenom"
+            />
+            {touched.prenom && !prenomValid && (
+              <div style={fieldErrorStyle}>Le prénom doit contenir au moins {PRENOM_MIN_LENGTH} caractères.</div>
+            )}
           </div>
           <div>
             <label style={labelStyle}>Nom *</label>
-            <input style={inputStyle} value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom" />
+            <input
+              style={{ ...inputStyle, ...(touched.nom && !nomValid ? { borderColor: "#EF4444" } : {}) }}
+              value={nom}
+              onChange={e => setNom(e.target.value)}
+              onBlur={() => setTouched(t => ({ ...t, nom: true }))}
+              placeholder="Nom"
+            />
+            {touched.nom && !nomValid && (
+              <div style={fieldErrorStyle}>Le nom doit contenir au moins {NOM_MIN_LENGTH} caractères.</div>
+            )}
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div>
             <label style={labelStyle}>Téléphone *</label>
-            <input style={inputStyle} value={telephone} onChange={e => setTelephone(e.target.value)} placeholder=" Numero" />
+            <input
+              style={{ ...inputStyle, ...(touched.telephone && !telephoneValid ? { borderColor: "#EF4444" } : {}) }}
+              value={telephone}
+              onChange={e => setTelephone(e.target.value)}
+              onBlur={() => setTouched(t => ({ ...t, telephone: true }))}
+              placeholder=" Numero"
+            />
+            {touched.telephone && !telephoneValid && (
+              <div style={fieldErrorStyle}>Le téléphone doit contenir au moins {TELEPHONE_MIN_LENGTH} caractères.</div>
+            )}
           </div>
           <div>
             <label style={labelStyle}>Email</label>
@@ -108,7 +169,7 @@ export function NewPatientForm({
               onChange={e => setEmail(e.target.value)}
               placeholder="patient@email.com"
             />
-            {!emailValid && <div style={{ fontSize: 11.5, color: "#EF4444", marginTop: 5 }}>Format d'email invalide</div>}
+            {!emailValid && <div style={fieldErrorStyle}>Format d'email invalide</div>}
           </div>
         </div>
 
@@ -147,7 +208,7 @@ export function NewPatientForm({
           </button>
           <button
             onClick={handleSave}
-            disabled={!canSave || saving || saved}
+            disabled={saving || saved}
             style={{
               padding: "10px 18px",
               fontSize: 14,
@@ -155,8 +216,8 @@ export function NewPatientForm({
               border: "none",
               borderRadius: 8,
               color: "#fff",
-              cursor: !canSave || saving || saved ? "default" : "pointer",
-              background: saved ? "#10B981" : (!canSave || saving ? "#9CA3AF" : "#0EA5A5"),
+              cursor: saving || saved ? "default" : "pointer",
+              background: saved ? "#10B981" : (!canSave ? "#9CA3AF" : "#0EA5A5"),
             }}
           >
             {saved ? "✓ Patient créé !" : saving ? "Création…" : "Créer la fiche patient"}

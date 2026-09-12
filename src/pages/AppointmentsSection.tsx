@@ -9,6 +9,18 @@ import {
 
 import { Avatar } from "../components/Avatar";
 import { ApptStatusBadge } from "../components/ApptStatusBadge";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  ArrowRightCircle,
+  Trash2,
+  Plus,
+  CalendarX2,
+  AlertCircle,
+  Loader2,
+  Clock,
+} from "lucide-react";
 
 interface AppointmentsSectionProps {
   // REQUIS pour que "Ouvrir" fonctionne : le parent doit basculer son état de page
@@ -25,13 +37,32 @@ const HOURS = [
   "13:00", "14:00", "15:00", "16:00", "17:00",
 ];
 
-// Progression des statuts : cliquer sur le bouton fait passer au statut suivant.
+// Progression des statuts : cliquer sur le bouton "avancer" fait passer au statut suivant.
 // ⚠️ Ajuste ces clés/valeurs pour qu'elles correspondent EXACTEMENT aux statuts
 // utilisés par ton backend (ex: table rendez_vous, colonne "statut").
 const STATUT_SUIVANT: Record<string, string> = {
   planifie: "confirme",
   confirme: "termine",
 };
+
+// Couleur d'accent par statut, pour la barre latérale de chaque ligne
+const STATUT_COLOR: Record<string, string> = {
+  planifie: "#F59E0B",
+  confirme: "#0EA5A5",
+  termine: "#10B981",
+  annule: "#EF4444",
+};
+
+// Tous les statuts possibles, pour le sélecteur manuel (permet aussi de choisir "annulé")
+const STATUT_OPTIONS: { value: string; label: string }[] = [
+  { value: "planifie", label: "Planifié" },
+  { value: "confirme", label: "Confirmé" },
+  { value: "termine", label: "Terminé" },
+  { value: "annule", label: "Annulé" },
+];
+
+// Valide un format d'heure "HH:MM" (00:00 à 23:59)
+const HEURE_REGEX = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
 
 export function AppointmentsSection({
   onOpenPatient,
@@ -128,6 +159,60 @@ export function AppointmentsSection({
   };
 
   /**
+   * Change librement le statut d'un rendez-vous (via le menu déroulant).
+   * Contrairement à handleAdvanceStatus, permet n'importe quelle transition,
+   * y compris "annulé".
+   */
+  const handleChangeStatus = async (appt: ApiRendezVous, newStatut: string) => {
+    if (newStatut === appt.statut || processingId === appt.id) return;
+
+    setProcessingId(appt.id);
+    try {
+      await updateRendezVous(appt.id, { statut: newStatut });
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === appt.id ? { ...a, statut: newStatut } : a))
+      );
+    } catch (err) {
+      console.error("Erreur changement de statut :", err);
+      setError("Impossible de changer le statut.");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  /**
+   * Modifie l'heure exacte d'un rendez-vous (ex: 09:15 au lieu du créneau rond 09:00).
+   */
+  const handleEditHeure = async (appt: ApiRendezVous) => {
+    if (processingId === appt.id) return;
+
+    const input = window.prompt(
+      `Nouvelle heure pour ce rendez-vous (format HH:MM) :`,
+      appt.heure.slice(0, 5)
+    );
+    if (input === null) return; // annulé par l'utilisateur
+
+    const trimmed = input.trim();
+    if (!HEURE_REGEX.test(trimmed)) {
+      window.alert("Format d'heure invalide. Utilisez le format HH:MM, par exemple 09:15.");
+      return;
+    }
+
+    setProcessingId(appt.id);
+    try {
+      await updateRendezVous(appt.id, { heure: trimmed });
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === appt.id ? { ...a, heure: trimmed } : a))
+      );
+    } catch (err) {
+      console.error("Erreur modification de l'heure :", err);
+      setError("Impossible de modifier l'heure du rendez-vous.");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  /**
    * Supprime un rendez-vous après confirmation de l'utilisateur.
    */
   const handleDelete = async (appt: ApiRendezVous) => {
@@ -187,16 +272,8 @@ export function AppointmentsSection({
 
   if (loading) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: 300,
-          color: "#9CA3AF",
-          fontSize: 14,
-        }}
-      >
+      <div className="flex min-h-[300px] items-center justify-center gap-2.5 text-sm text-text-subtle">
+        <Loader2 size={16} className="animate-spin" />
         Chargement des rendez-vous...
       </div>
     );
@@ -204,310 +281,198 @@ export function AppointmentsSection({
 
   if (error) {
     return (
-      <div
-        style={{
-          background: "#FEF2F2",
-          border: "1px solid #FECACA",
-          borderRadius: 10,
-          padding: 16,
-          color: "#DC2626",
-          fontSize: 13.5,
-        }}
-      >
+      <div className="flex items-center gap-2 rounded-xl border border-red-light bg-red-light/40 p-4 text-[13.5px] text-red">
+        <AlertCircle size={16} strokeWidth={2} />
         {error}
       </div>
     );
   }
 
-  const columns = "70px 1fr 120px 100px 180px";
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="flex flex-col gap-4">
       {/* HEADER */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 12,
-        }}
-      >
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#1F2937" }}>
-            Rendez-vous
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: "#6B7280",
-              marginTop: 2,
-              textTransform: "capitalize",
-            }}
-          >
-            {dateLabel}
-          </div>
+          <div className="text-xl font-bold text-text">Rendez-vous</div>
+          <div className="mt-0.5 text-[13px] capitalize text-text-muted">{dateLabel}</div>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <NavButton onClick={() => changeDate(-1)}>‹ Hier</NavButton>
-          <NavButton
+        <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-white p-1">
+          <button
+            onClick={() => changeDate(-1)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text"
+          >
+            <ChevronLeft size={16} strokeWidth={2.2} />
+          </button>
+          <button
             onClick={() => setSelectedDate(new Date())}
-            active={isToday}
+            className={`rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+              isToday ? "bg-primary-light text-primary-dark" : "text-text-muted hover:bg-surface"
+            }`}
           >
             Aujourd'hui
-          </NavButton>
-          <NavButton onClick={() => changeDate(1)}>Demain ›</NavButton>
+          </button>
+          <button
+            onClick={() => changeDate(1)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text"
+          >
+            <ChevronRight size={16} strokeWidth={2.2} />
+          </button>
         </div>
       </div>
 
-      {/* TABLE */}
-      <div
-        style={{
-          background: "#fff",
-          border: "1px solid #E5E7EB",
-          borderRadius: 12,
-          overflow: "hidden",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: columns,
-            padding: "12px 20px",
-            borderBottom: "1px solid #F3F4F6",
-            background: "#F8F9FA",
-          }}
-        >
-          {["Heure", "Patient — Motif", "Durée", "Statut", "Actions"].map(
-            (h) => (
-              <div
-                key={h}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: "#9CA3AF",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                {h}
-              </div>
-            )
-          )}
-        </div>
-
+      {/* PLANNING */}
+      <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
         {slots.length === 0 ? (
-          <div
-            style={{
-              padding: 40,
-              textAlign: "center",
-              color: "#9CA3AF",
-              fontSize: 13.5,
-            }}
-          >
-            Aucun créneau disponible pour cette date.
+          <div className="flex flex-col items-center gap-2 py-14 text-text-subtle">
+            <CalendarX2 size={28} strokeWidth={1.5} />
+            <div className="text-[13.5px]">Aucun créneau disponible pour cette date.</div>
           </div>
         ) : (
-          slots.map((slot, index) => {
-            const isLast = index === slots.length - 1;
-            const borderBottom = isLast ? "none" : "1px solid #F9FAFB";
+          <div className="flex flex-col gap-2 p-3">
+            {slots.map((slot) => {
+              if (slot.type === "appointment") {
+                const { appt } = slot;
+                const patientName = appt.patient
+                  ? `${appt.patient.nom} ${appt.patient.prenom}`
+                  : "Patient inconnu";
+                const isProcessing = processingId === appt.id;
+                const nextStatut = STATUT_SUIVANT[appt.statut];
+                const accent = STATUT_COLOR[appt.statut] ?? "#9CA3AF";
 
-            if (slot.type === "appointment") {
-              const { appt } = slot;
-              const patientName = appt.patient
-                ? `${appt.patient.nom} ${appt.patient.prenom}`
-                : "Patient inconnu";
-              const isProcessing = processingId === appt.id;
-              const nextStatut = STATUT_SUIVANT[appt.statut];
-
-              return (
-                <div
-                  key={`appt-${appt.id}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: columns,
-                    padding: "14px 20px",
-                    borderBottom,
-                    alignItems: "center",
-                  }}
-                >
+                return (
                   <div
-                    style={{
-                      fontFamily: "'DM Mono', monospace",
-                      fontSize: 13.5,
-                      color: "#1F2937",
-                      fontWeight: 500,
-                    }}
+                    key={`appt-${appt.id}`}
+                    className="flex items-center gap-4 rounded-xl border border-border-soft bg-surface/40 p-3 pl-4 transition-all hover:border-border hover:bg-white hover:shadow-[0_4px_14px_rgba(0,0,0,0.06)]"
+                    style={{ borderLeftColor: accent, borderLeftWidth: 3 }}
                   >
-                    {appt.heure}
-                  </div>
+                    <div className="w-14 shrink-0 font-mono text-[13.5px] font-semibold text-text">
+                      {appt.heure}
+                    </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <Avatar name={patientName} size={30} />
-                    <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1F2937" }}>
-                        {patientName}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#9CA3AF" }}>
-                        {appt.motif || "Rendez-vous"}
-                      </div>
+                    <Avatar name={patientName} size={32} />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13.5px] font-semibold text-text">{patientName}</div>
+                      <div className="truncate text-xs text-text-subtle">{appt.motif || "Rendez-vous"}</div>
+                    </div>
+
+                    {/* Statut : menu déroulant pour un changement libre (inclut "Annulé") */}
+                    <select
+                      value={appt.statut}
+                      disabled={isProcessing}
+                      onChange={(e) => handleChangeStatus(appt, e.target.value)}
+                      title="Changer le statut"
+                      className="shrink-0 cursor-pointer rounded-full border-none bg-transparent px-0 py-0 text-[11.5px] font-semibold outline-none disabled:cursor-wait"
+                      style={{ color: accent }}
+                    >
+                      {STATUT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <ActionIconButton
+                        title="Modifier l'heure"
+                        onClick={() => handleEditHeure(appt)}
+                        disabled={isProcessing}
+                        colorClass="text-text-muted hover:bg-surface-2 hover:text-text"
+                      >
+                        <Clock size={15} strokeWidth={2} />
+                      </ActionIconButton>
+
+                      <ActionIconButton
+                        title="Ouvrir le dossier"
+                        onClick={() => onOpenPatient(appt.patientId)}
+                        colorClass="text-primary hover:bg-primary-light"
+                      >
+                        <FolderOpen size={15} strokeWidth={2} />
+                      </ActionIconButton>
+
+                      {nextStatut && (
+                        <ActionIconButton
+                          title={`Faire passer à "${nextStatut}"`}
+                          onClick={() => handleAdvanceStatus(appt)}
+                          disabled={isProcessing}
+                          colorClass="text-green hover:bg-green-light"
+                        >
+                          {isProcessing ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <ArrowRightCircle size={15} strokeWidth={2} />
+                          )}
+                        </ActionIconButton>
+                      )}
+
+                      <ActionIconButton
+                        title="Supprimer"
+                        onClick={() => handleDelete(appt)}
+                        disabled={isProcessing}
+                        colorClass="text-red hover:bg-red-light"
+                      >
+                        <Trash2 size={15} strokeWidth={2} />
+                      </ActionIconButton>
                     </div>
                   </div>
+                );
+              }
 
-                  <div style={{ fontSize: 13, color: "#9CA3AF" }}>—</div>
+              // Créneau disponible — l'heure est déjà connue (slot.hour), donc le bouton
+              // "Nouveau rendez-vous" crée directement le RDV sur ce créneau sans ressaisie.
+              return (
+                <div
+                  key={`free-${slot.hour}`}
+                  className="flex items-center gap-4 rounded-xl border border-dashed border-border p-3 pl-4 transition-colors hover:border-primary hover:bg-primary-light/20"
+                >
+                  <div className="w-14 shrink-0 font-mono text-[13.5px] text-text-subtle">{slot.hour}</div>
+                  <div className="flex-1 text-[13px] italic text-text-subtle">Créneau disponible</div>
 
-                  <div>
-                    <ApptStatusBadge status={appt.statut} />
-                  </div>
-
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      onClick={() => onOpenPatient(appt.patientId)}
-                      style={{
-                        padding: "5px 10px",
-                        border: "1px solid #E5E7EB",
-                        borderRadius: 6,
-                        background: "#fff",
-                        fontSize: 12,
-                        color: "#0EA5A5",
-                        cursor: "pointer",
-                        fontWeight: 500,
-                        transition: "background 0.15s, border-color 0.15s",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "#F0FDFA";
-                        e.currentTarget.style.borderColor = "#99F6E4";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "#fff";
-                        e.currentTarget.style.borderColor = "#E5E7EB";
-                      }}
-                    >
-                      Ouvrir
-                    </button>
-
-                    {nextStatut && (
-                      <button
-                        onClick={() => handleAdvanceStatus(appt)}
-                        disabled={isProcessing}
-                        style={{
-                          padding: "5px 10px",
-                          border: "1px solid #BBF7D0",
-                          borderRadius: 6,
-                          background: "#F0FDF4",
-                          fontSize: 12,
-                          color: "#16A34A",
-                          cursor: isProcessing ? "wait" : "pointer",
-                          fontWeight: 500,
-                          opacity: isProcessing ? 0.6 : 1,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {isProcessing ? "..." : `→ ${nextStatut}`}
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => handleDelete(appt)}
-                      disabled={isProcessing}
-                      style={{
-                        padding: "5px 10px",
-                        border: "1px solid #FECACA",
-                        borderRadius: 6,
-                        background: "#fff",
-                        fontSize: 12,
-                        color: "#DC2626",
-                        cursor: isProcessing ? "wait" : "pointer",
-                        fontWeight: 500,
-                        opacity: isProcessing ? 0.6 : 1,
-                      }}
-                    >
-                      Suppr.
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => onCreateAppointment?.(selectedDate, slot.hour)}
+                    disabled={!onCreateAppointment}
+                    title={`Créer un rendez-vous à ${slot.hour}`}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+                      onCreateAppointment
+                        ? "bg-primary text-white hover:bg-primary-dark"
+                        : "cursor-not-allowed bg-surface-2 text-text-subtle"
+                    }`}
+                  >
+                    <Plus size={13} strokeWidth={2.5} />
+                    Nouveau rendez-vous
+                  </button>
                 </div>
               );
-            }
-
-            // Créneau disponible
-            return (
-              <div
-                key={`free-${slot.hour}`}
-                onClick={() => onCreateAppointment?.(selectedDate, slot.hour)}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: columns,
-                  padding: "12px 20px",
-                  borderBottom,
-                  alignItems: "center",
-                  cursor: onCreateAppointment ? "pointer" : "default",
-                  transition: "background 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  if (onCreateAppointment) {
-                    e.currentTarget.style.background = "#F8FAFA";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: "'DM Mono', monospace",
-                    fontSize: 13.5,
-                    color: "#C4CBD4",
-                  }}
-                >
-                  {slot.hour}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "#B0B8C1",
-                    fontStyle: "italic",
-                  }}
-                >
-                  — disponible —
-                </div>
-              </div>
-            );
-          })
+            })}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// ---- Bouton de navigation (extrait pour éviter la répétition) ----
+// ---- Bouton d'action icône (extrait pour éviter la répétition) ----
 
-function NavButton({
+function ActionIconButton({
   children,
   onClick,
-  active = false,
+  disabled,
+  title,
+  colorClass,
 }: {
   children: React.ReactNode;
   onClick: () => void;
-  active?: boolean;
+  disabled?: boolean;
+  title: string;
+  colorClass: string;
 }) {
   return (
     <button
       onClick={onClick}
-      style={{
-        padding: "7px 14px",
-        border: active ? "1px solid #0EA5A5" : "1px solid #E5E7EB",
-        borderRadius: 8,
-        background: active ? "#E0F5F5" : "#fff",
-        fontSize: 13,
-        color: active ? "#0EA5A5" : "#6B7280",
-        fontWeight: active ? 600 : 400,
-        cursor: "pointer",
-        fontFamily: "'Inter', sans-serif",
-        transition: "background 0.15s, border-color 0.15s",
-      }}
+      disabled={disabled}
+      title={title}
+      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60 ${colorClass}`}
     >
       {children}
     </button>

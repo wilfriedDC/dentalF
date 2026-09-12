@@ -8,87 +8,26 @@ type ApptStatus =
   | "TERMINE"
   | "ANNULE";
 
-const STATUS_MAP: Record<
-  ApptStatus,
-  {
-    label: string;
-    bg: string;
-    color: string;
-  }
-> = {
-  Confirmed: {
-    label: "Confirmé",
-    bg: "#DCFCE7",
-    color: "#166534",
-  },
-
-  Pending: {
-    label: "En attente",
-    bg: "#FEF3C7",
-    color: "#92400E",
-  },
-
-  Completed: {
-    label: "Terminé",
-    bg: "#E0F2FE",
-    color: "#075985",
-  },
-
-  Cancelled: {
-    label: "Annulé",
-    bg: "#FEE2E2",
-    color: "#991B1B",
-  },
-
-  PLANIFIE: {
-    label: "Planifié",
-    bg: "#FEF3C7",
-    color: "#92400E",
-  },
-
-  CONFIRME: {
-    label: "Confirmé",
-    bg: "#DCFCE7",
-    color: "#166534",
-  },
-
-  TERMINE: {
-    label: "Terminé",
-    bg: "#E0F2FE",
-    color: "#075985",
-  },
-
-  ANNULE: {
-    label: "Annulé",
-    bg: "#FEE2E2",
-    color: "#991B1B",
-  },
+const STATUS_MAP: Record<ApptStatus, { label: string; className: string }> = {
+  Confirmed: { label: "Confirmé", className: "bg-green-light text-green" },
+  Pending: { label: "En attente", className: "bg-amber-light text-amber" },
+  Completed: { label: "Terminé", className: "bg-primary-light text-primary" },
+  Cancelled: { label: "Annulé", className: "bg-red-light text-red" },
+  PLANIFIE: { label: "Planifié", className: "bg-amber-light text-amber" },
+  CONFIRME: { label: "Confirmé", className: "bg-green-light text-green" },
+  TERMINE: { label: "Terminé", className: "bg-primary-light text-primary" },
+  ANNULE: { label: "Annulé", className: "bg-red-light text-red" },
 };
 
-export function ApptStatusBadge({
-  status,
-}: {
-  status: string;
-}) {
-  const config =
-    STATUS_MAP[status as ApptStatus] ?? {
-      label: status,
-      bg: "#F3F4F6",
-      color: "#6B7280",
-    };
+export function ApptStatusBadge({ status }: { status: string }) {
+  const config = STATUS_MAP[status as ApptStatus] ?? {
+    label: status,
+    className: "bg-surface-2 text-text-muted",
+  };
 
   return (
     <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "4px 8px",
-        borderRadius: 6,
-        background: config.bg,
-        color: config.color,
-        fontSize: 11.5,
-        fontWeight: 600,
-      }}
+      className={`inline-flex items-center rounded-md px-2 py-1 text-[11.5px] font-semibold ${config.className}`}
     >
       {config.label}
     </span>

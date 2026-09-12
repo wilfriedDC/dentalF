@@ -3,11 +3,11 @@ import { api } from "./client";
 export interface CreatePatientPayload {
   nom: string;
   prenom: string;
-  sexe?: string | null;
+  sexe?: string;
   telephone: string;
-  email?: string | null;
-  dateNaissance?: string | null;
-  adresse?: string | null;
+  email?: string;
+  dateNaissance?: string;
+  adresse?: string;
 }
 
 export interface ApiActe {
@@ -51,6 +51,27 @@ export interface ApiConsultation {
   paiements: ApiPaiement[];
 }
 
+// =====================================================
+// ODONTOGRAMME
+// =====================================================
+
+export type ToothStatus =
+  | "sain"
+  | "carie"
+  | "obturee"
+  | "couronne"
+  | "devitalisee"
+  | "implant"
+  | "a_extraire"
+  | "extraite";
+
+export interface ApiToothNote {
+  numeroDent: number; // notation FDI (11-18, 21-28, 31-38, 41-48)
+  note: string;
+  statut?: ToothStatus;
+  updatedAt?: string;
+}
+
 export interface ApiPatient {
   id: number;
   nom: string;
@@ -66,6 +87,7 @@ export interface ApiPatient {
 
   consultations: ApiConsultation[];
   rendezVous: ApiRendezVous[];
+  odontogramme?: ApiToothNote[];
 }
 
 
@@ -107,32 +129,46 @@ export const createPatient = async (
   }
 };
 
+/**
+ * Récupère l'état actuel du schéma dentaire d'un patient (une entrée par
+ * dent annotée, correspondant à sa consultation la plus récente).
+ */
+export const getOdontogrammeByPatient = async (
+  patientId: number
+): Promise<ApiToothNote[]> => {
+  const response = await api.get(`/patients/${patientId}/odontogramme`);
 
-//odontograme
-export interface ApiToothNote {
-  numeroDent: number; // notation FDI (11-18, 21-28, 31-38, 41-48)
-  note: string;
-  updatedAt?: string;
-}
-
-// Ajoute ce champ à ton interface ApiPatient existante :
-export interface ApiPatient {
-  // ...tous les champs existants...
-  odontogramme?: ApiToothNote[];
-}
+  return (response.data as any[]).map((row) => ({
+    numeroDent: Number(row.numeroDent),
+    note: row.commentaire ?? "",
+    statut: row.statut as ToothStatus,
+    updatedAt: row.updatedAt,
+  }));
+};
 
 /**
- * Crée ou met à jour la remarque d'une dent pour un patient.
- * ⚠️ Adapte l'URL si ta route backend est différente.
+ * Crée ou met à jour le statut/la remarque d'une dent, rattachée à une
+ * consultation précise du patient (l'odontogramme est un historique par
+ * consultation, pas un simple champ libre sur le patient).
  */
 export const updateToothNote = async (
   patientId: number,
   numeroDent: number,
-  note: string
+  note: string,
+  statut: ToothStatus,
+  consultationId: number
 ) => {
   const response = await api.put(
     `/patients/${patientId}/odontogramme/${numeroDent}`,
-    { note }
+    { consultationId, statut, commentaire: note }
   );
-  return response.data as ApiToothNote;
+
+  const saved = response.data;
+
+  return {
+    numeroDent: Number(saved.numeroDent),
+    note: saved.commentaire ?? "",
+    statut: saved.statut as ToothStatus,
+    updatedAt: saved.updatedAt,
+  } as ApiToothNote;
 };

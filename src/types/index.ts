@@ -12,17 +12,17 @@ export interface Patient {
   id: number;
   name: string;
   phone: string;
-  email: string;
-  dob: string;
-  address: string;
   lastVisit: string;
-  nextAppt: string | null;
   balance: number;
+  email?: string;
+  dob?: string;
+  address?: string;
+  nextAppt?: string;
 }
 
 export interface Consultation {
   id: number;
-  patientId: string;
+  patientId: number;
   date: string;
   motif: string;
   acte: string;
@@ -34,7 +34,7 @@ export interface Consultation {
 
 export interface Appointment {
   id: number;
-  patientId: string;
+  patientId: number;
   patientName: string;
   time: string;
   duration: number;

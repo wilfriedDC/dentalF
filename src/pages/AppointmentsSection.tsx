@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   getRendezVous,
@@ -13,14 +13,20 @@ import {
   ChevronLeft,
   ChevronRight,
   FolderOpen,
-  ArrowRightCircle,
   Trash2,
   Plus,
   CalendarX2,
   AlertCircle,
   Loader2,
-  Clock,
+  ChevronDown,
 } from "lucide-react";
+
+// Nom de l'événement global déclenché après la création réussie d'un
+// rendez-vous (voir NewAppointmentForm.tsx). AppointmentsSection l'écoute
+// pour recharger sa liste automatiquement — sans dépendance directe entre
+// les deux composants (même pattern que PRATICIEN_UPDATED_EVENT sur la
+// Sidebar).
+export const RENDEZVOUS_UPDATED_EVENT = "rendezvous:updated";
 
 interface AppointmentsSectionProps {
   // REQUIS pour que "Ouvrir" fonctionne : le parent doit basculer son état de page
@@ -31,38 +37,29 @@ interface AppointmentsSectionProps {
   onCreateAppointment?: (date: Date, hour: string) => void;
 }
 
-// Heures de la journée affichées dans le planning
+// Heures de la journée affichées dans le planning (créneaux libres suggérés)
 const HOURS = [
   "08:00", "09:00", "10:00", "11:00", "12:00",
   "13:00", "14:00", "15:00", "16:00", "17:00",
 ];
 
-// Progression des statuts : cliquer sur le bouton "avancer" fait passer au statut suivant.
-// ⚠️ Ajuste ces clés/valeurs pour qu'elles correspondent EXACTEMENT aux statuts
+// Tous les statuts possibles — utilisés pour le menu de changement de statut.
+// ⚠️ Ajuste ces clés pour qu'elles correspondent EXACTEMENT aux statuts
 // utilisés par ton backend (ex: table rendez_vous, colonne "statut").
-const STATUT_SUIVANT: Record<string, string> = {
-  planifie: "confirme",
-  confirme: "termine",
-};
-
-// Couleur d'accent par statut, pour la barre latérale de chaque ligne
-const STATUT_COLOR: Record<string, string> = {
-  planifie: "#F59E0B",
-  confirme: "#0EA5A5",
-  termine: "#10B981",
-  annule: "#EF4444",
-};
-
-// Tous les statuts possibles, pour le sélecteur manuel (permet aussi de choisir "annulé")
-const STATUT_OPTIONS: { value: string; label: string }[] = [
+const STATUTS: { value: string; label: string }[] = [
   { value: "planifie", label: "Planifié" },
   { value: "confirme", label: "Confirmé" },
   { value: "termine", label: "Terminé" },
   { value: "annule", label: "Annulé" },
 ];
 
-// Valide un format d'heure "HH:MM" (00:00 à 23:59)
-const HEURE_REGEX = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+// Couleur d'accent par statut, pour la barre latérale de chaque ligne et le sélecteur
+const STATUT_COLOR: Record<string, string> = {
+  planifie: "#F59E0B",
+  confirme: "#0EA5A5",
+  termine: "#10B981",
+  annule: "#EF4444",
+};
 
 export function AppointmentsSection({
   onOpenPatient,
@@ -76,23 +73,43 @@ export function AppointmentsSection({
   // ID du rendez-vous en cours de traitement (évite le double-clic pendant un appel API)
   const [processingId, setProcessingId] = useState<number | null>(null);
 
-  useEffect(() => {
-    const loadAppointments = async () => {
-      try {
+  const loadAppointments = useCallback(async (options?: { silent?: boolean }) => {
+    try {
+      // Rechargement silencieux (déclenché par l'événement global) : on ne
+      // remet pas l'écran de chargement plein écran, pour ne pas faire
+      // disparaître la liste actuellement affichée pendant le refetch.
+      if (!options?.silent) {
         setLoading(true);
-        setError("");
-        const data = await getRendezVous();
-        setAppointments(data);
-      } catch (err) {
-        console.error("Erreur chargement rendez-vous :", err);
-        setError("Impossible de charger les rendez-vous.");
-      } finally {
-        setLoading(false);
       }
+      setError("");
+      const data = await getRendezVous();
+      setAppointments(data);
+    } catch (err) {
+      console.error("Erreur chargement rendez-vous :", err);
+      setError("Impossible de charger les rendez-vous.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Chargement initial
+  useEffect(() => {
+    loadAppointments();
+  }, [loadAppointments]);
+
+  // Rechargement automatique quand un rendez-vous est créé ailleurs (modale
+  // "Nouveau rendez-vous", créneau libre, etc.) — voir RENDEZVOUS_UPDATED_EVENT.
+  useEffect(() => {
+    const handleRendezVousUpdated = () => {
+      loadAppointments({ silent: true });
     };
 
-    loadAppointments();
-  }, []);
+    window.addEventListener(RENDEZVOUS_UPDATED_EVENT, handleRendezVousUpdated);
+
+    return () => {
+      window.removeEventListener(RENDEZVOUS_UPDATED_EVENT, handleRendezVousUpdated);
+    };
+  }, [loadAppointments]);
 
   // ---- Utilitaires date/heure ----
 
@@ -108,6 +125,13 @@ export function AppointmentsSection({
   const getHourNumber = (heure: string) => {
     const hourPart = heure.split(":")[0];
     return parseInt(hourPart, 10);
+  };
+
+  // Heure actuelle au format "HH:MM", utilisée comme valeur par défaut pour
+  // le bouton "Nouveau RDV" (heure exacte, indépendante de la grille HOURS).
+  const getCurrentTimeString = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   };
 
   const selectedDateKey = getDateKey(selectedDate);
@@ -137,12 +161,11 @@ export function AppointmentsSection({
   // ---- Actions backend ----
 
   /**
-   * Fait avancer le rendez-vous au statut suivant (planifie -> confirme -> termine).
-   * Met à jour l'état local de façon optimiste après confirmation du backend.
+   * Change le statut du rendez-vous vers n'importe quelle valeur choisie dans le menu
+   * (pas seulement l'étape suivante). Mise à jour optimiste après confirmation du backend.
    */
-  const handleAdvanceStatus = async (appt: ApiRendezVous) => {
-    const nextStatut = STATUT_SUIVANT[appt.statut];
-    if (!nextStatut || processingId === appt.id) return;
+  const handleChangeStatus = async (appt: ApiRendezVous, nextStatut: string) => {
+    if (nextStatut === appt.statut || processingId === appt.id) return;
 
     setProcessingId(appt.id);
     try {
@@ -153,60 +176,6 @@ export function AppointmentsSection({
     } catch (err) {
       console.error("Erreur mise à jour du statut :", err);
       setError("Impossible de mettre à jour le statut.");
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  /**
-   * Change librement le statut d'un rendez-vous (via le menu déroulant).
-   * Contrairement à handleAdvanceStatus, permet n'importe quelle transition,
-   * y compris "annulé".
-   */
-  const handleChangeStatus = async (appt: ApiRendezVous, newStatut: string) => {
-    if (newStatut === appt.statut || processingId === appt.id) return;
-
-    setProcessingId(appt.id);
-    try {
-      await updateRendezVous(appt.id, { statut: newStatut });
-      setAppointments((prev) =>
-        prev.map((a) => (a.id === appt.id ? { ...a, statut: newStatut } : a))
-      );
-    } catch (err) {
-      console.error("Erreur changement de statut :", err);
-      setError("Impossible de changer le statut.");
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  /**
-   * Modifie l'heure exacte d'un rendez-vous (ex: 09:15 au lieu du créneau rond 09:00).
-   */
-  const handleEditHeure = async (appt: ApiRendezVous) => {
-    if (processingId === appt.id) return;
-
-    const input = window.prompt(
-      `Nouvelle heure pour ce rendez-vous (format HH:MM) :`,
-      appt.heure.slice(0, 5)
-    );
-    if (input === null) return; // annulé par l'utilisateur
-
-    const trimmed = input.trim();
-    if (!HEURE_REGEX.test(trimmed)) {
-      window.alert("Format d'heure invalide. Utilisez le format HH:MM, par exemple 09:15.");
-      return;
-    }
-
-    setProcessingId(appt.id);
-    try {
-      await updateRendezVous(appt.id, { heure: trimmed });
-      setAppointments((prev) =>
-        prev.map((a) => (a.id === appt.id ? { ...a, heure: trimmed } : a))
-      );
-    } catch (err) {
-      console.error("Erreur modification de l'heure :", err);
-      setError("Impossible de modifier l'heure du rendez-vous.");
     } finally {
       setProcessingId(null);
     }
@@ -297,27 +266,40 @@ export function AppointmentsSection({
           <div className="mt-0.5 text-[13px] capitalize text-text-muted">{dateLabel}</div>
         </div>
 
-        <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-white p-1">
-          <button
-            onClick={() => changeDate(-1)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text"
-          >
-            <ChevronLeft size={16} strokeWidth={2.2} />
-          </button>
-          <button
-            onClick={() => setSelectedDate(new Date())}
-            className={`rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
-              isToday ? "bg-primary-light text-primary-dark" : "text-text-muted hover:bg-surface"
-            }`}
-          >
-            Aujourd'hui
-          </button>
-          <button
-            onClick={() => changeDate(1)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text"
-          >
-            <ChevronRight size={16} strokeWidth={2.2} />
-          </button>
+        <div className="flex items-center gap-2.5">
+          <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-white p-1">
+            <button
+              onClick={() => changeDate(-1)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text"
+            >
+              <ChevronLeft size={16} strokeWidth={2.2} />
+            </button>
+            <button
+              onClick={() => setSelectedDate(new Date())}
+              className={`rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                isToday ? "bg-primary-light text-primary-dark" : "text-text-muted hover:bg-surface"
+              }`}
+            >
+              Aujourd'hui
+            </button>
+            <button
+              onClick={() => changeDate(1)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text"
+            >
+              <ChevronRight size={16} strokeWidth={2.2} />
+            </button>
+          </div>
+
+          {/* Nouveau RDV à une heure exacte, indépendante de la grille de créneaux ci-dessous */}
+          {onCreateAppointment && (
+            <button
+              onClick={() => onCreateAppointment(selectedDate, getCurrentTimeString())}
+              className="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_3px_10px_rgba(14,165,165,0.35)] transition-colors hover:bg-primary-dark"
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              Nouveau RDV
+            </button>
+          )}
         </div>
       </div>
 
@@ -337,7 +319,6 @@ export function AppointmentsSection({
                   ? `${appt.patient.nom} ${appt.patient.prenom}`
                   : "Patient inconnu";
                 const isProcessing = processingId === appt.id;
-                const nextStatut = STATUT_SUIVANT[appt.statut];
                 const accent = STATUT_COLOR[appt.statut] ?? "#9CA3AF";
 
                 return (
@@ -357,32 +338,45 @@ export function AppointmentsSection({
                       <div className="truncate text-xs text-text-subtle">{appt.motif || "Rendez-vous"}</div>
                     </div>
 
-                    {/* Statut : menu déroulant pour un changement libre (inclut "Annulé") */}
-                    <select
-                      value={appt.statut}
-                      disabled={isProcessing}
-                      onChange={(e) => handleChangeStatus(appt, e.target.value)}
-                      title="Changer le statut"
-                      className="shrink-0 cursor-pointer rounded-full border-none bg-transparent px-0 py-0 text-[11.5px] font-semibold outline-none disabled:cursor-wait"
-                      style={{ color: accent }}
-                    >
-                      {STATUT_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                    <ApptStatusBadge status={appt.statut} />
+
+                    {/* Changer le statut — n'importe quelle valeur, pas seulement la suivante */}
+                    <div className="relative shrink-0">
+                      <select
+                        value={appt.statut}
+                        disabled={isProcessing}
+                        onChange={(e) => handleChangeStatus(appt, e.target.value)}
+                        className="h-8 cursor-pointer appearance-none rounded-lg border border-border bg-white py-0 pl-2.5 pr-7 text-[12px] font-semibold outline-none transition-colors hover:bg-surface disabled:cursor-wait disabled:opacity-60"
+                        style={{ color: accent }}
+                      >
+                        {STATUTS.map((s) => (
+                          <option
+                            key={s.value}
+                            value={s.value}
+                            style={{ color: "#1F2937" }}
+                          >
+                            {s.label}
+                            {s.value === appt.statut ? " (actuel)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {isProcessing ? (
+                        <Loader2
+                          size={13}
+                          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 animate-spin"
+                          style={{ color: accent }}
+                        />
+                      ) : (
+                        <ChevronDown
+                          size={13}
+                          strokeWidth={2.2}
+                          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
+                          style={{ color: accent }}
+                        />
+                      )}
+                    </div>
 
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <ActionIconButton
-                        title="Modifier l'heure"
-                        onClick={() => handleEditHeure(appt)}
-                        disabled={isProcessing}
-                        colorClass="text-text-muted hover:bg-surface-2 hover:text-text"
-                      >
-                        <Clock size={15} strokeWidth={2} />
-                      </ActionIconButton>
-
                       <ActionIconButton
                         title="Ouvrir le dossier"
                         onClick={() => onOpenPatient(appt.patientId)}
@@ -390,21 +384,6 @@ export function AppointmentsSection({
                       >
                         <FolderOpen size={15} strokeWidth={2} />
                       </ActionIconButton>
-
-                      {nextStatut && (
-                        <ActionIconButton
-                          title={`Faire passer à "${nextStatut}"`}
-                          onClick={() => handleAdvanceStatus(appt)}
-                          disabled={isProcessing}
-                          colorClass="text-green hover:bg-green-light"
-                        >
-                          {isProcessing ? (
-                            <Loader2 size={15} className="animate-spin" />
-                          ) : (
-                            <ArrowRightCircle size={15} strokeWidth={2} />
-                          )}
-                        </ActionIconButton>
-                      )}
 
                       <ActionIconButton
                         title="Supprimer"
@@ -419,30 +398,24 @@ export function AppointmentsSection({
                 );
               }
 
-              // Créneau disponible — l'heure est déjà connue (slot.hour), donc le bouton
-              // "Nouveau rendez-vous" crée directement le RDV sur ce créneau sans ressaisie.
+              // Créneau disponible
               return (
-                <div
+                <button
                   key={`free-${slot.hour}`}
-                  className="flex items-center gap-4 rounded-xl border border-dashed border-border p-3 pl-4 transition-colors hover:border-primary hover:bg-primary-light/20"
+                  onClick={() => onCreateAppointment?.(selectedDate, slot.hour)}
+                  disabled={!onCreateAppointment}
+                  className={`group flex items-center gap-4 rounded-xl border border-dashed border-border p-3 pl-4 text-left transition-colors ${
+                    onCreateAppointment ? "hover:border-primary hover:bg-primary-light/30" : "cursor-default"
+                  }`}
                 >
                   <div className="w-14 shrink-0 font-mono text-[13.5px] text-text-subtle">{slot.hour}</div>
-                  <div className="flex-1 text-[13px] italic text-text-subtle">Créneau disponible</div>
-
-                  <button
-                    onClick={() => onCreateAppointment?.(selectedDate, slot.hour)}
-                    disabled={!onCreateAppointment}
-                    title={`Créer un rendez-vous à ${slot.hour}`}
-                    className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
-                      onCreateAppointment
-                        ? "bg-primary text-white hover:bg-primary-dark"
-                        : "cursor-not-allowed bg-surface-2 text-text-subtle"
-                    }`}
-                  >
-                    <Plus size={13} strokeWidth={2.5} />
-                    Nouveau rendez-vous
-                  </button>
-                </div>
+                  <div className="flex items-center gap-1.5 text-[13px] italic text-text-subtle group-hover:text-primary-dark">
+                    {onCreateAppointment && (
+                      <Plus size={13} strokeWidth={2.5} className="opacity-0 transition-opacity group-hover:opacity-100" />
+                    )}
+                    Créneau disponible
+                  </div>
+                </button>
               );
             })}
           </div>

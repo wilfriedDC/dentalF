@@ -9,13 +9,22 @@ export interface CreateConsultationPayload {
   prochainRdvDate?: string | null;
   prochainRdvHeure?: string | null;
 
-  // Acte
+  // Rétrocompatibilité : un seul acte envoyé directement.
   acte?: {
     numeroDent?: string | null;
     nomActe: string;
     description?: string | null;
     prix: number;
   } | null;
+
+  // Nouveau : plusieurs actes dans la même consultation (panier style
+  // "articles de supermarché"), créés tous ensemble côté backend.
+  actes?: {
+    numeroDent?: string | null;
+    nomActe: string;
+    description?: string | null;
+    prix: number;
+  }[];
 
   // Paiement
   paiement?: {
@@ -152,6 +161,20 @@ export const updateConsultation = async (
 ) => {
   const response = await api.put(
     `/consultations/${id}`,
+    data
+  );
+
+  return response.data;
+};
+
+
+// POST /consultations/:id/paiements
+export const addPaiement = async (
+  id: number,
+  data: { montant: number; modePaiement?: string | null }
+) => {
+  const response = await api.post(
+    `/consultations/${id}/paiements`,
     data
   );
 

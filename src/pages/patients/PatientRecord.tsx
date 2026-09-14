@@ -11,6 +11,7 @@ import autoTable from "jspdf-autotable";
 
 import {
   getPatient,
+  getOdontogrammeByPatient,
   updateToothNote,
   type ApiPatient,
   type ApiConsultation,
@@ -94,9 +95,19 @@ export function PatientRecord({ patient, onBack, onNewConsult, onNewAppointment 
         setError("");
 
         const result = await getPatient(patient.id);
-
         setData(result);
-        setToothNotes(result.odontogramme ?? []);
+
+        // L'odontogramme est chargé séparément : il agrège, pour chaque dent,
+        // la ligne la plus récente parmi toutes les consultations du patient.
+        try {
+          const notes = await getOdontogrammeByPatient(patient.id);
+          setToothNotes(notes);
+        } catch (odontoErr) {
+          console.error("Erreur chargement odontogramme :", odontoErr);
+          // On n'affiche pas d'erreur bloquante pour ça : le reste de la
+          // fiche patient reste utilisable même si l'odontogramme échoue.
+          setToothNotes([]);
+        }
       } catch (err) {
         console.error("Erreur chargement patient :", err);
         setError("Impossible de charger les informations du patient.");
@@ -112,8 +123,13 @@ export function PatientRecord({ patient, onBack, onNewConsult, onNewAppointment 
   // SAUVEGARDER UNE REMARQUE DE DENT
   // ===================================================
 
-  const handleSaveToothNote = async (numeroDent: number, note: string, statut: ToothStatus) => {
-    const saved = await updateToothNote(patient.id, numeroDent, note, statut);
+  const handleSaveToothNote = async (
+    numeroDent: number,
+    note: string,
+    statut: ToothStatus,
+    consultationId: number
+  ) => {
+    const saved = await updateToothNote(patient.id, numeroDent, note, statut, consultationId);
 
     setToothNotes((prev) => {
       const withoutThisTooth = prev.filter((n) => n.numeroDent !== numeroDent);
@@ -666,7 +682,13 @@ export function PatientRecord({ patient, onBack, onNewConsult, onNewAppointment 
             ODONTOGRAMME
         ================================================= */}
 
-        {tab === "odontogramme" && <Odontogram notes={toothNotes} onSaveNote={handleSaveToothNote} />}
+        {tab === "odontogramme" && (
+          <Odontogram
+            notes={toothNotes}
+            consultations={consultations}
+            onSaveNote={handleSaveToothNote}
+          />
+        )}
       </div>
     </div>
   );

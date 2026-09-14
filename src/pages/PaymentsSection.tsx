@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getConsultations,
+  addPaiement,
   type ApiConsultation,
 } from "../api/consultations.api";
 import { formatDate } from "../utils/formatDate";
 import { Avatar } from "../components/Avatar";
+import { InvoiceView } from "./billing/InvoiceView";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -22,6 +24,8 @@ import {
   ListFilter,
   FileDown,
   FileSpreadsheet,
+  X,
+  FileText,
 } from "lucide-react";
 
 type PaymentFilter = "all" | "PAYE" | "PARTIEL" | "IMPAYE";
@@ -96,22 +100,32 @@ export function PaymentsSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Paiement en cours de saisie (ligne sélectionnée pour "Payer")
+  const [payingRow, setPayingRow] = useState<PaymentRow | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState("Cash");
+  const [paySubmitting, setPaySubmitting] = useState(false);
+  const [payError, setPayError] = useState("");
+
+  // Consultation à afficher en facture juste après l'enregistrement d'un paiement
+  const [invoiceConsultation, setInvoiceConsultation] = useState<ApiConsultation | null>(null);
+
+  const loadPayments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const data = await getConsultations();
+      setConsultations(data);
+    } catch (err) {
+      console.error("Erreur chargement paiements :", err);
+      setError("Impossible de charger les paiements.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadPayments = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const data = await getConsultations();
-        setConsultations(data);
-      } catch (err) {
-        console.error("Erreur chargement paiements :", err);
-        setError("Impossible de charger les paiements.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadPayments();
   }, []);
 
@@ -211,6 +225,57 @@ export function PaymentsSection() {
   }, [totalIn, totalDue]);
 
   // =========================
+  // ENREGISTRER UN PAIEMENT (impayé / partiel) puis afficher la facture
+  // =========================
+  // Utilise la vraie route POST /consultations/:id/paiements, qui crée un
+  // nouveau Paiement en base sans toucher aux paiements existants.
+  const openPayModal = (row: PaymentRow) => {
+    setPayingRow(row);
+    setPayAmount(String(row.balance));
+    setPayMethod("Cash");
+    setPayError("");
+  };
+
+  const closePayModal = () => {
+    if (paySubmitting) return;
+    setPayingRow(null);
+  };
+
+  const submitPayment = async () => {
+    if (!payingRow) return;
+
+    const amount = Number(payAmount);
+    if (!amount || amount <= 0) {
+      setPayError("Montant invalide.");
+      return;
+    }
+
+    setPaySubmitting(true);
+    setPayError("");
+
+    try {
+      const updatedConsultation: ApiConsultation = await addPaiement(payingRow.consultationId, {
+        montant: amount,
+        modePaiement: payMethod,
+      });
+
+      // Recharge la liste complète pour que les totaux/filtres reflètent le nouveau paiement
+      const refreshed = await getConsultations();
+      setConsultations(refreshed);
+
+      setPayingRow(null);
+
+      // Facture affichée automatiquement, comme après une consultation
+      setInvoiceConsultation(updatedConsultation);
+    } catch (err) {
+      console.error("Erreur enregistrement paiement :", err);
+      setPayError("Impossible d'enregistrer ce paiement.");
+    } finally {
+      setPaySubmitting(false);
+    }
+  };
+
+  // =========================
   // EXPORT PDF — utilise la liste filtrée actuellement affichée
   // =========================
   const exportToPDF = () => {
@@ -272,6 +337,13 @@ export function PaymentsSection() {
     XLSX.writeFile(workbook, `paiements_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  // =========================
+  // FACTURE — affichée juste après l'enregistrement d'un paiement
+  // =========================
+  if (invoiceConsultation) {
+    return <InvoiceView consultation={invoiceConsultation} onBack={() => setInvoiceConsultation(null)} />;
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[300px] items-center justify-center gap-2.5 text-sm text-text-subtle">
@@ -328,7 +400,7 @@ export function PaymentsSection() {
         <SummaryCard icon={<Receipt size={17} strokeWidth={2.2} />} color="#0EA5A5" label="Transactions" value={String(transactionCount)} />
       </div>
 
-      {/* TAUX DE RECOUVREMENT GLOBAL */}
+      {/* TAUX DE RECOUVREMENT GLOBAL 
       {(totalIn > 0 || totalDue > 0) && (
         <div className="shrink-0 rounded-xl border border-border-soft bg-surface/60 px-4 py-3">
           <div className="flex items-center justify-between text-[12.5px]">
@@ -340,7 +412,7 @@ export function PaymentsSection() {
           </div>
         </div>
       )}
-
+      */}
       {/* CARTE LISTE — occupe le reste de l'espace, scroll interne uniquement */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
         {/* Barre de filtres pro : compteurs + pastille de couleur par statut */}
@@ -385,6 +457,7 @@ export function PaymentsSection() {
           <div className="w-[110px] shrink-0">Méthode</div>
           <div className="w-[110px] shrink-0">Solde</div>
           <div className="w-[90px] shrink-0">Statut</div>
+          <div className="w-[88px] shrink-0" />
         </div>
 
         {/* Liste — scroll contenu dans cette carte, jamais la page entière */}
@@ -441,12 +514,110 @@ export function PaymentsSection() {
                   <div className="w-[90px] shrink-0">
                     <StatusPill status={payment.status} />
                   </div>
+
+                  {/* Payer — uniquement pour Impayé / Partiel */}
+                  <div className="w-[88px] shrink-0">
+                    {payment.status !== "PAYE" ? (
+                      <button
+                        onClick={() => openPayModal(payment)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-primary-dark"
+                      >
+                        <Wallet size={12} strokeWidth={2.2} />
+                        Payer
+                      </button>
+                    ) : (
+                      <div className="flex items-center justify-center gap-1 text-[11px] text-text-subtle">
+                        <FileText size={12} strokeWidth={2} />
+                        Soldé
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {/* MODALE — enregistrer un paiement */}
+      {payingRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={closePayModal}>
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-[15px] font-bold text-text">Enregistrer un paiement</div>
+              <button
+                onClick={closePayModal}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-surface-2 hover:text-text"
+              >
+                <X size={15} strokeWidth={2.2} />
+              </button>
+            </div>
+
+            <div className="mt-1 text-[12.5px] text-text-muted">
+              {payingRow.patient} — {payingRow.acte}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between rounded-lg bg-surface px-3 py-2 text-[12.5px]">
+              <span className="text-text-muted">Solde restant</span>
+              <span className="font-bold text-red">{payingRow.balance.toLocaleString("fr-FR")} Ar</span>
+            </div>
+
+            <div className="mt-4">
+              <label className="mb-1.5 block text-[11.5px] font-semibold uppercase tracking-wide text-text-subtle">
+                Montant à encaisser (Ar)
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                className="w-full rounded-lg border-[1.5px] border-border px-3 py-2 text-[14px] text-text outline-none transition-colors focus:border-primary"
+                autoFocus
+              />
+            </div>
+
+            <div className="mt-3.5">
+              <label className="mb-1.5 block text-[11.5px] font-semibold uppercase tracking-wide text-text-subtle">
+                Méthode de paiement
+              </label>
+              <select
+                value={payMethod}
+                onChange={(e) => setPayMethod(e.target.value)}
+                className="w-full rounded-lg border-[1.5px] border-border bg-white px-3 py-2 text-[14px] text-text outline-none transition-colors focus:border-primary"
+              >
+                {Object.entries(METHOD_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {payError && <div className="mt-3 text-[12.5px] text-red">{payError}</div>}
+
+            <div className="mt-5 flex gap-2.5">
+              <button
+                onClick={closePayModal}
+                disabled={paySubmitting}
+                className="flex-1 rounded-lg border border-border py-2.5 text-[13px] font-semibold text-text-muted transition-colors hover:bg-surface disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={submitPayment}
+                disabled={paySubmitting}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60"
+              >
+                {paySubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} strokeWidth={2.2} />}
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

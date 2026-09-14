@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -13,6 +13,11 @@ import type { NavSection } from "../types";
 import { Avatar } from "./Avatar";
 import { getPraticiens, type Praticien } from "../api/settings.api";
 
+// Nom de l'événement global déclenché après un enregistrement réussi du
+// praticien depuis SettingsSection. La Sidebar l'écoute pour se recharger
+// automatiquement, sans dépendance directe entre les deux composants.
+export const PRATICIEN_UPDATED_EVENT = "praticien:updated";
+
 const NAV_ITEMS: { id: NavSection; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} strokeWidth={2} /> },
   { id: "patients", label: "Patients", icon: <Users size={18} strokeWidth={2} /> },
@@ -24,20 +29,35 @@ const NAV_ITEMS: { id: NavSection; label: string; icon: React.ReactNode }[] = [
 export function Sidebar({ active, onNav }: { active: NavSection; onNav: (s: NavSection) => void }) {
   const [praticien, setPraticien] = useState<Praticien | null>(null);
 
+  const loadPraticien = useCallback(async () => {
+    try {
+      const praticiens = await getPraticiens();
+      // Pas de notion de "praticien connecté" dans le modèle actuel :
+      // on affiche le premier praticien du cabinet.
+      setPraticien(praticiens[0] ?? null);
+    } catch (err) {
+      console.error("Erreur chargement praticien :", err);
+    }
+  }, []);
+
+  // Chargement initial
   useEffect(() => {
-    const loadPraticien = async () => {
-      try {
-        const praticiens = await getPraticiens();
-        // Pas de notion de "praticien connecté" dans le modèle actuel :
-        // on affiche le premier praticien du cabinet.
-        setPraticien(praticiens[0] ?? null);
-      } catch (err) {
-        console.error("Erreur chargement praticien :", err);
-      }
+    loadPraticien();
+  }, [loadPraticien]);
+
+  // Rechargement automatique quand SettingsSection signale un enregistrement
+  // réussi (voir PRATICIEN_UPDATED_EVENT ci-dessus).
+  useEffect(() => {
+    const handlePraticienUpdated = () => {
+      loadPraticien();
     };
 
-    loadPraticien();
-  }, []);
+    window.addEventListener(PRATICIEN_UPDATED_EVENT, handlePraticienUpdated);
+
+    return () => {
+      window.removeEventListener(PRATICIEN_UPDATED_EVENT, handlePraticienUpdated);
+    };
+  }, [loadPraticien]);
 
   const praticienName = praticien ? `Dr. ${praticien.nomComplet}` : "...";
 

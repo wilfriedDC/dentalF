@@ -44,6 +44,16 @@ interface ActivityItem {
   type: "payment" | "consultation";
 }
 
+// Statut "confirmé" tel que stocké réellement en base (voir STATUTS dans
+// AppointmentsSection.tsx : "planifie", "confirme", "termine", "annule" —
+// tout en minuscules, sans accent). Centralisé ici pour éviter un nouveau
+// décalage de casse si le backend change un jour cette valeur.
+const CONFIRMED_STATUS = "confirme";
+
+function isConfirmedStatus(status: string | undefined | null) {
+  return (status ?? "").toLowerCase() === CONFIRMED_STATUS;
+}
+
 export function Dashboard({ onNav }: DashboardProps) {
   const [patients, setPatients] = useState<any[]>([]);
   const [consultations, setConsultations] = useState<ApiConsultation[]>([]);
@@ -145,10 +155,11 @@ export function Dashboard({ onNav }: DashboardProps) {
       .sort((a, b) => a.time.localeCompare(b.time));
   }, [appointments, today]);
 
+  // ⚠️ Fix : les statuts sont stockés en minuscules côté backend ("confirme"),
+  // pas "CONFIRME"/"CONFIRMED". La comparaison précédente ne matchait jamais,
+  // ce qui affichait systématiquement "0 confirmé(s) sur X".
   const confirmedAppointments = useMemo(() => {
-    return todayAppointments.filter(
-      (appointment) => appointment.status === "CONFIRME" || appointment.status === "CONFIRMED"
-    ).length;
+    return todayAppointments.filter((appointment) => isConfirmedStatus(appointment.status)).length;
   }, [todayAppointments]);
 
   const pendingAppointments = todayAppointments.length - confirmedAppointments;
@@ -300,7 +311,7 @@ export function Dashboard({ onNav }: DashboardProps) {
         <Sparkles size={130} strokeWidth={1} className="pointer-events-none absolute -right-6 -top-8 text-white/10" />
         <div className="relative flex items-center justify-between gap-6 max-[820px]:flex-col max-[820px]:items-stretch">
           <div>
-            <div className="text-[22px] font-extrabold text-white">Bonjour, {doctorGreeting} 👋</div>
+            <div className="text-[22px] font-extrabold text-white">Bonjour, {doctorGreeting} </div>
             <div className="mt-1.5 text-[13.5px] capitalize text-white/80">{todayLabel}</div>
           </div>
 
@@ -416,7 +427,10 @@ export function Dashboard({ onNav }: DashboardProps) {
             ) : (
               <div className="flex flex-col gap-2.5">
                 {todayAppointments.map((appt) => {
-                  const isConfirmed = appt.status === "CONFIRME" || appt.status === "CONFIRMED";
+                  // ⚠️ Fix : même correction de casse ici (voir isConfirmedStatus
+                  // plus haut) — sinon la barre latérale restait orange même
+                  // pour un RDV réellement confirmé.
+                  const isConfirmed = isConfirmedStatus(appt.status);
                   return (
                     <div
                       key={appt.id}

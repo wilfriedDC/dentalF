@@ -204,14 +204,14 @@ export function BillingSection() {
         </button>
       </div>
 
-      {/* RÉSUMÉ */}
+      {/* RÉSUMÉ *
       <div className="grid shrink-0 grid-cols-3 gap-4">
         <SummaryCard icon={<Receipt size={17} strokeWidth={2.2} />} color="#0EA5A5" label="Total facturé" value={`${totalFacture.toLocaleString("fr-FR")} Ar`} />
         <SummaryCard icon={<Wallet size={17} strokeWidth={2.2} />} color="#10B981" label="Total encaissé" value={`${totalEncaisse.toLocaleString("fr-FR")} Ar`} />
         <SummaryCard icon={<AlertCircle size={17} strokeWidth={2.2} />} color={totalReste > 0 ? "#EF4444" : "#10B981"} label="Reste à percevoir" value={`${totalReste.toLocaleString("fr-FR")} Ar`} />
       </div>
 
-      {/* TAUX DE RECOUVREMENT */}
+      * TAUX DE RECOUVREMENT *
       {totalFacture > 0 && (
         <div className="shrink-0 rounded-xl border border-border-soft bg-surface/60 px-4 py-3">
           <div className="flex items-center justify-between text-[12.5px]">
@@ -223,6 +223,7 @@ export function BillingSection() {
           </div>
         </div>
       )}
+      /}
 
       {/* CARTE LISTE — occupe le reste de l'espace, scroll interne uniquement */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]">

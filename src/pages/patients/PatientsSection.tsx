@@ -19,9 +19,17 @@ import {
   type ApiPatient,
 } from "../../api/patients.api";
 
-// Convertit un ApiPatient (retour brut du backend) en Patient (type utilisé dans l'UI)
+// Convertit un ApiPatient (retour brut du backend) en Patient (type utilisé dans l'UI).
+// email/dob/address/nextAppt sont optionnels sur Patient car un patient réel
+// peut très bien ne pas avoir ces informations renseignées côté backend.
 function toPatient(patient: ApiPatient): Patient {
   const lastConsultation = patient.consultations?.[0];
+
+  // Prochain rendez-vous : on prend le premier rendez-vous à venir dans la
+  // liste (si le backend ne les trie pas déjà par date, ce calcul reste
+  // approximatif — à affiner si besoin en triant par date ici).
+  const nextRdv = patient.rendezVous?.[0];
+  const nextAppt = nextRdv ? `${nextRdv.date} ${nextRdv.heure}` : undefined;
 
   return {
     id: patient.id,
@@ -29,6 +37,10 @@ function toPatient(patient: ApiPatient): Patient {
     phone: patient.telephone,
     lastVisit: lastConsultation?.dateConsultation ?? patient.createdAt,
     balance: 0,
+    email: patient.email ?? undefined,
+    dob: patient.dateNaissance ?? undefined,
+    address: patient.adresse ?? undefined,
+    nextAppt,
   };
 }
 
@@ -195,9 +207,9 @@ export function PatientsSection({
 
   return (
     <div className="grid h-[calc(100vh-130px)] grid-cols-[300px_1fr] gap-4">
-      {/* Left panel */}
-      <div className="flex flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
-        <div className="px-3.5 pb-2.5 pt-3.5">
+      {/* Left panel — même traitement visuel que la Sidebar (dégradé + texte blanc) */}
+      <div className="flex flex-col overflow-hidden rounded-2xl bg-gradient-to-b from-primary via-primary to-primary-dark shadow-[0_8px_24px_rgba(12,143,143,0.25)]">
+        <div className="px-3.5 pb-3 pt-3.5">
           <div className="relative">
             <Search
               size={14}
@@ -208,12 +220,12 @@ export function PatientsSection({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filtrer les patients…"
-              className="w-full rounded-lg border-[1.5px] border-border bg-surface py-2 pl-8 pr-2.5 text-[13px] text-text outline-none transition-colors focus:border-primary focus:bg-white"
+              className="w-full rounded-lg border-[1.5px] border-white/0 bg-white py-2 pl-8 pr-2.5 text-[13px] text-text outline-none transition-colors placeholder:text-text-subtle focus:border-white/60"
             />
           </div>
 
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-[11.5px] text-text-subtle">
+          <div className="mt-2.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-white/75">
               <Users2 size={12} strokeWidth={2} />
               {filtered.length} patient{filtered.length !== 1 ? "s" : ""}
             </div>
@@ -223,7 +235,7 @@ export function PatientsSection({
                 onClick={exportPatientsToExcel}
                 disabled={filtered.length === 0}
                 title="Exporter en Excel"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-white/75 transition-colors hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
               >
                 <FileSpreadsheet size={13} strokeWidth={2.2} />
               </button>
@@ -231,7 +243,7 @@ export function PatientsSection({
                 onClick={exportPatientsToPDF}
                 disabled={filtered.length === 0}
                 title="Exporter en PDF"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-white/75 transition-colors hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
               >
                 <FileDown size={13} strokeWidth={2.2} />
               </button>
@@ -239,29 +251,33 @@ export function PatientsSection({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-1.5 pb-1.5">
+        <div className="flex-1 overflow-y-auto px-2 pb-2">
           {filtered.map((p) => {
             const isActive = selected?.id === p.id;
             return (
               <button
                 key={p.id}
                 onClick={() => setSelected(p)}
-                className={`flex w-full items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-2.5 text-left transition-colors ${
+                className={`flex w-full items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-2.5 text-left transition-all duration-150 ${
                   isActive
-                    ? "border-l-primary bg-primary-light"
-                    : "border-l-transparent hover:bg-surface"
+                    ? "border-l-white bg-white shadow-[0_4px_14px_rgba(0,0,0,0.15)]"
+                    : "border-l-transparent hover:bg-white/15"
                 }`}
               >
                 <Avatar name={p.name} size={34} />
                 <div className="min-w-0 flex-1">
                   <div
                     className={`truncate text-[13.5px] ${
-                      isActive ? "font-semibold text-primary-dark" : "font-medium text-text"
+                      isActive ? "font-semibold text-primary-dark" : "font-medium text-white"
                     }`}
                   >
                     {p.name}
                   </div>
-                  <div className="mt-0.5 text-[11.5px] text-text-subtle">
+                  <div
+                    className={`mt-0.5 truncate text-[11.5px] ${
+                      isActive ? "text-text-subtle" : "text-white/70"
+                    }`}
+                  >
                     Dernière visite: {formatDate(p.lastVisit)}
                   </div>
                 </div>
@@ -269,6 +285,13 @@ export function PatientsSection({
               </button>
             );
           })}
+
+          {filtered.length === 0 && (
+            <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-white/70">
+              <Users2 size={22} strokeWidth={1.5} />
+              <div className="text-[12.5px]">Aucun patient trouvé.</div>
+            </div>
+          )}
         </div>
       </div>
 

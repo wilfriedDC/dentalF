@@ -14,14 +14,24 @@ import {
   getCabinet,
   updateCabinet,
   getPraticiens,
+  createPraticien,
   updatePraticien,
   type Cabinet,
   type Praticien,
 } from "../api/settings.api";
 import { Avatar } from "../components/Avatar";
+import { PRATICIEN_UPDATED_EVENT } from "../components/Sidebar";
 
 type Toast = { type: "success" | "error"; text: string } | null;
 type Tab = "cabinet" | "praticien";
+
+// Formulaires locaux : toujours des chaînes (pas de null), pour rester
+// compatibles avec des <input> contrôlés même avant la création en base.
+type CabinetForm = { nom: string; adresse: string; telephone: string; email: string };
+type PraticienForm = { nomComplet: string; numeroRPPS: string; specialite: string };
+
+const EMPTY_CABINET: CabinetForm = { nom: "", adresse: "", telephone: "", email: "" };
+const EMPTY_PRATICIEN: PraticienForm = { nomComplet: "", numeroRPPS: "", specialite: "" };
 
 function Field({
   label,
@@ -65,8 +75,15 @@ function ToastMessage({ toast }: { toast: Toast }) {
 
 export function SettingsSection() {
   const [tab, setTab] = useState<Tab>("cabinet");
+
+  // État "serveur" : ce qui existe réellement en base. null = pas encore créé.
   const [cabinet, setCabinet] = useState<Cabinet | null>(null);
   const [praticien, setPraticien] = useState<Praticien | null>(null);
+
+  // État "formulaire" : toujours éditable, même si rien n'existe encore en base.
+  const [cabinetForm, setCabinetForm] = useState<CabinetForm>(EMPTY_CABINET);
+  const [praticienForm, setPraticienForm] = useState<PraticienForm>(EMPTY_PRATICIEN);
+
   const [loading, setLoading] = useState(true);
   const [savingCabinet, setSavingCabinet] = useState(false);
   const [savingPraticien, setSavingPraticien] = useState(false);
@@ -80,8 +97,26 @@ export function SettingsSection() {
           getCabinet(),
           getPraticiens(),
         ]);
+
         setCabinet(cabinetData);
-        setPraticien(praticiens.length > 0 ? praticiens[0] : null);
+        if (cabinetData) {
+          setCabinetForm({
+            nom: cabinetData.nom,
+            adresse: cabinetData.adresse ?? "",
+            telephone: cabinetData.telephone ?? "",
+            email: cabinetData.email ?? "",
+          });
+        }
+
+        const first = praticiens.length > 0 ? praticiens[0] : null;
+        setPraticien(first);
+        if (first) {
+          setPraticienForm({
+            nomComplet: first.nomComplet,
+            numeroRPPS: first.numeroRPPS ?? "",
+            specialite: first.specialite ?? "",
+          });
+        }
       } catch (error) {
         console.error("Erreur chargement paramètres", error);
       } finally {
@@ -97,17 +132,25 @@ export function SettingsSection() {
   }
 
   async function handleSaveCabinet() {
-    if (!cabinet) return;
+    if (!cabinetForm.nom.trim()) {
+      showToast(setCabinetMessage, { type: "error", text: "Le nom est requis" });
+      return;
+    }
     try {
       setSavingCabinet(true);
+      // updateCabinet crée le cabinet s'il n'existe pas encore côté backend,
+      // donc pas besoin d'un endpoint séparé pour la création.
       const updated = await updateCabinet({
-        nom: cabinet.nom,
-        adresse: cabinet.adresse,
-        telephone: cabinet.telephone,
-        email: cabinet.email,
+        nom: cabinetForm.nom,
+        adresse: cabinetForm.adresse || null,
+        telephone: cabinetForm.telephone || null,
+        email: cabinetForm.email || null,
       });
       setCabinet(updated);
-      showToast(setCabinetMessage, { type: "success", text: "Cabinet mis à jour" });
+      showToast(setCabinetMessage, {
+        type: "success",
+        text: cabinet ? "Cabinet mis à jour" : "Cabinet créé",
+      });
     } catch (error) {
       console.error(error);
       showToast(setCabinetMessage, { type: "error", text: "Échec de l'enregistrement" });
@@ -117,16 +160,32 @@ export function SettingsSection() {
   }
 
   async function handleSavePraticien() {
-    if (!praticien) return;
+    if (!praticienForm.nomComplet.trim()) {
+      showToast(setPraticienMessage, { type: "error", text: "Le nom est requis" });
+      return;
+    }
     try {
       setSavingPraticien(true);
-      const updated = await updatePraticien(praticien.id, {
-        nomComplet: praticien.nomComplet,
-        numeroRPPS: praticien.numeroRPPS,
-        specialite: praticien.specialite,
-      });
+
+      const payload = {
+        nomComplet: praticienForm.nomComplet,
+        numeroRPPS: praticienForm.numeroRPPS || null,
+        specialite: praticienForm.specialite || null,
+      };
+
+      const updated = praticien
+        ? await updatePraticien(praticien.id, payload)
+        : await createPraticien(payload);
+
       setPraticien(updated);
-      showToast(setPraticienMessage, { type: "success", text: "Profil mis à jour" });
+      showToast(setPraticienMessage, {
+        type: "success",
+        text: praticien ? "Profil mis à jour" : "Praticien créé",
+      });
+
+      // Prévient la Sidebar que le praticien a changé, pour qu'elle recharge
+      // automatiquement le "Dr. Nom" affiché en bas sans reload de page.
+      window.dispatchEvent(new Event(PRATICIEN_UPDATED_EVENT));
     } catch (error) {
       console.error(error);
       showToast(setPraticienMessage, { type: "error", text: "Échec de l'enregistrement" });
@@ -179,30 +238,37 @@ export function SettingsSection() {
       </div>
 
       {/* ================= CABINET ================= */}
-      {tab === "cabinet" && cabinet && (
+      {tab === "cabinet" && (
         <div className="flex flex-1 flex-col justify-between rounded-2xl bg-white p-6 ring-1 ring-gray-100">
+          {!cabinet && (
+            <p className="mb-4 text-[12.5px] text-gray-400">
+              Aucun cabinet enregistré pour l'instant — remplis les informations ci-dessous pour le créer.
+            </p>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <Field label="Nom du cabinet" span>
               <input
                 className={inputClass}
-                value={cabinet.nom}
-                onChange={(e) => setCabinet({ ...cabinet, nom: e.target.value })}
+                placeholder="Ex: Cabinet Dentaire Rakoto"
+                value={cabinetForm.nom}
+                onChange={(e) => setCabinetForm({ ...cabinetForm, nom: e.target.value })}
               />
             </Field>
 
             <Field label="Adresse" icon={<MapPin size={12} />} span>
               <input
                 className={inputClass}
-                value={cabinet.adresse ?? ""}
-                onChange={(e) => setCabinet({ ...cabinet, adresse: e.target.value })}
+                value={cabinetForm.adresse}
+                onChange={(e) => setCabinetForm({ ...cabinetForm, adresse: e.target.value })}
               />
             </Field>
 
             <Field label="Téléphone" icon={<Phone size={12} />}>
               <input
                 className={inputClass}
-                value={cabinet.telephone ?? ""}
-                onChange={(e) => setCabinet({ ...cabinet, telephone: e.target.value })}
+                value={cabinetForm.telephone}
+                onChange={(e) => setCabinetForm({ ...cabinetForm, telephone: e.target.value })}
               />
             </Field>
 
@@ -210,8 +276,8 @@ export function SettingsSection() {
               <input
                 type="email"
                 className={inputClass}
-                value={cabinet.email ?? ""}
-                onChange={(e) => setCabinet({ ...cabinet, email: e.target.value })}
+                value={cabinetForm.email}
+                onChange={(e) => setCabinetForm({ ...cabinetForm, email: e.target.value })}
               />
             </Field>
           </div>
@@ -225,17 +291,23 @@ export function SettingsSection() {
                 savingCabinet ? "cursor-default bg-gray-300" : "bg-primary hover:bg-primary-dark"
               }`}
             >
-              {savingCabinet ? "Enregistrement..." : "Enregistrer"}
+              {savingCabinet ? "Enregistrement..." : cabinet ? "Enregistrer" : "Créer le cabinet"}
             </button>
           </div>
         </div>
       )}
 
       {/* ================= PRATICIEN ================= */}
-      {tab === "praticien" &&
-        (praticien ? (
-          <div className="flex flex-1 flex-col justify-between rounded-2xl bg-white p-6 ring-1 ring-gray-100">
-            <div className="flex flex-col gap-5">
+      {tab === "praticien" && (
+        <div className="flex flex-1 flex-col justify-between rounded-2xl bg-white p-6 ring-1 ring-gray-100">
+          <div className="flex flex-col gap-5">
+            {!praticien && (
+              <p className="text-[12.5px] text-gray-400">
+                Aucun praticien enregistré pour l'instant — remplis les informations ci-dessous pour en créer un.
+              </p>
+            )}
+
+            {praticien && (
               <div className="flex items-center gap-3">
                 <Avatar name={`Dr. ${praticien.nomComplet}`} size={40} bg="#0C8F8F" color="#ffffff" />
                 <div className="min-w-0">
@@ -247,52 +319,50 @@ export function SettingsSection() {
                   </div>
                 </div>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Nom complet" span>
-                  <input
-                    className={inputClass}
-                    value={praticien.nomComplet}
-                    onChange={(e) => setPraticien({ ...praticien, nomComplet: e.target.value })}
-                  />
-                </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Nom complet" span>
+                <input
+                  className={inputClass}
+                  placeholder="Ex: Jean Rakoto"
+                  value={praticienForm.nomComplet}
+                  onChange={(e) => setPraticienForm({ ...praticienForm, nomComplet: e.target.value })}
+                />
+              </Field>
 
-                <Field label="Numéro RPPS" icon={<BadgeCheck size={12} />}>
-                  <input
-                    className={inputClass}
-                    value={praticien.numeroRPPS ?? ""}
-                    onChange={(e) => setPraticien({ ...praticien, numeroRPPS: e.target.value })}
-                  />
-                </Field>
+              <Field label="Numéro RPPS" icon={<BadgeCheck size={12} />}>
+                <input
+                  className={inputClass}
+                  value={praticienForm.numeroRPPS}
+                  onChange={(e) => setPraticienForm({ ...praticienForm, numeroRPPS: e.target.value })}
+                />
+              </Field>
 
-                <Field label="Spécialité">
-                  <input
-                    className={inputClass}
-                    value={praticien.specialite ?? ""}
-                    onChange={(e) => setPraticien({ ...praticien, specialite: e.target.value })}
-                  />
-                </Field>
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
-              <ToastMessage toast={praticienMessage} />
-              <button
-                onClick={handleSavePraticien}
-                disabled={savingPraticien}
-                className={`ml-auto rounded-xl px-5 py-2.5 text-[13.5px] font-semibold text-white transition-colors ${
-                  savingPraticien ? "cursor-default bg-gray-300" : "bg-primary hover:bg-primary-dark"
-                }`}
-              >
-                {savingPraticien ? "Enregistrement..." : "Enregistrer"}
-              </button>
+              <Field label="Spécialité">
+                <input
+                  className={inputClass}
+                  value={praticienForm.specialite}
+                  onChange={(e) => setPraticienForm({ ...praticienForm, specialite: e.target.value })}
+                />
+              </Field>
             </div>
           </div>
-        ) : (
-          <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-gray-300 text-[13.5px] text-gray-400">
-            Aucun profil praticien trouvé.
+
+          <div className="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
+            <ToastMessage toast={praticienMessage} />
+            <button
+              onClick={handleSavePraticien}
+              disabled={savingPraticien}
+              className={`ml-auto rounded-xl px-5 py-2.5 text-[13.5px] font-semibold text-white transition-colors ${
+                savingPraticien ? "cursor-default bg-gray-300" : "bg-primary hover:bg-primary-dark"
+              }`}
+            >
+              {savingPraticien ? "Enregistrement..." : praticien ? "Enregistrer" : "Créer le praticien"}
+            </button>
           </div>
-        ))}
+        </div>
+      )}
     </div>
   );
 }

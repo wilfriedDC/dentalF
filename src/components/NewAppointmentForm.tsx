@@ -8,6 +8,7 @@ import {
 } from "../api/patients.api";
 
 import { createRendezVous } from "../api/rendezvous.api";
+import { RENDEZVOUS_UPDATED_EVENT } from "../pages/AppointmentsSection";
 
 // =====================================================
 // PROPS
@@ -258,6 +259,10 @@ export function NewAppointmentForm({
         motif: motif.trim() || undefined,
         statut: "PLANIFIE",
       });
+
+      // Prévient AppointmentsSection qu'un rendez-vous vient d'être créé,
+      // pour qu'il recharge sa liste automatiquement sans reload de page.
+      window.dispatchEvent(new Event(RENDEZVOUS_UPDATED_EVENT));
 
       onSaved?.();
 

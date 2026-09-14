@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ApiToothNote } from "../api/patients.api";
+import type { ReactElement } from "react";
 
 // =====================================================
 // DISPOSITION DES DENTS — Notation FDI (internationale)
@@ -201,7 +202,7 @@ function ToothShape({
   const rootColor = status === "devitalisee" ? "#5B21B6" : stroke;
   const rootWidth = status === "devitalisee" ? 2.4 : 2;
 
-  const rootLines: Record<ToothKind, JSX.Element> = {
+  const rootLines: Record<ToothKind, ReactElement> = {
     molar: (
       <>
         <path d="M11 30 L9 44" stroke={rootColor} strokeWidth={rootWidth} strokeLinecap="round" fill="none" />
@@ -233,7 +234,7 @@ function ToothShape({
   );
 
   // Marquages spécifiques par statut, dessinés par-dessus la couronne.
-  let overlay: JSX.Element | null = null;
+  let overlay: ReactElement | null = null;
   if (status === "carie") {
     overlay = <ellipse cx="14.5" cy="17" rx="3.2" ry="2.6" fill="#7C2D12" opacity={0.85} />;
   } else if (status === "obturee") {
